@@ -1,5 +1,5 @@
 import streamlit as st
-from mplsoccer import Pitch
+from mplsoccer import VerticalPitch
 import matplotlib.pyplot as plt
 
 # Page config
@@ -9,7 +9,7 @@ st.set_page_config(page_title="Half Vertical Pitch", layout="centered")
 st.title("⚽ Vertical Half Pitch (mplsoccer)")
 
 # Create figure
-pitch = Pitch(half=True, pitch_type='statsbomb', orientation='vertical')
+pitch = VerticalPitch(half=True, pitch_type='statsbomb')
 fig, ax = pitch.draw(figsize=(6, 8))
 
 # Display with Streamlit
