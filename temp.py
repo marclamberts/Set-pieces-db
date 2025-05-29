@@ -23,8 +23,5 @@ pitch = VerticalPitch(
 # Draw the pitch
 fig, ax = pitch.draw(figsize=(6, 8))
 
-# Optional: Add center circle or annotations
-# pitch.annotate_circle(...)
-
 # Show in Streamlit
 st.pyplot(fig)
