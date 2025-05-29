@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Styled Vertical Half Pitch", layout="centered")
 
 # Title
-st.title("⚽ Styled Vertical Half Pitch")
+st.title("Styled Vertical Half Pitch")
 
 # Create custom styled pitch
 pitch = VerticalPitch(
