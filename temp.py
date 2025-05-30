@@ -33,7 +33,7 @@ filtered_df = df[
     (df["play_pattern_name"] == selected_pattern)
 ].copy()
 
-# Swap axes to make it vertical (mplsoccer vertical pitch: x is vertical)
+# Swap axes to make it vertical (StatsBomb pitch: x is vertical)
 x = filtered_df["location_y"]
 y = filtered_df["location_x"]
 
@@ -59,32 +59,31 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
-# Add basic vertical half pitch outlines (manual lines)
-# StatsBomb pitch: 120x80
+# Manual pitch shapes (half pitch — attacking up)
 pitch_shapes = [
     # Outer boundaries
     dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=2)),
 
     # Penalty box
-    dict(type="rect", x0=18, y0=18, x1=62, y1=0, line=dict(color="white", width=1)),
+    dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="white", width=1)),
 
     # 6-yard box
-    dict(type="rect", x0=30, y0=6, x1=50, y1=0, line=dict(color="white", width=1)),
+    dict(type="rect", x0=30, y0=54, x1=50, y1=60, line=dict(color="white", width=1)),
 
     # Goal line
-    dict(type="line", x0=36, y0=0, x1=44, y1=0, line=dict(color="white", width=4)),
+    dict(type="line", x0=36, y0=60, x1=44, y1=60, line=dict(color="white", width=4)),
 
     # Penalty spot
-    dict(type="circle", x0=38.5, y0=11.5, x1=41.5, y1=8.5, line=dict(color="white", width=1)),
+    dict(type="circle", x0=38.5, y0=48.5, x1=41.5, y1=51.5, line=dict(color="white", width=1)),
 
-    # Center arc (just for aesthetic)
-    dict(type="circle", x0=30, y0=50, x1=50, y1=70, line=dict(color="white", width=1), opacity=0.2)
+    # Optional arc or center line could go here
 ]
 
+# Layout for upper half pitch (flip y-axis)
 plot.update_layout(
     title=f"Goals from {selected_pattern}",
     xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False),
+    yaxis=dict(range=[60, 0], showgrid=False, zeroline=False, visible=False),  # flipped Y-axis
     shapes=pitch_shapes,
     plot_bgcolor='#144A29',
     paper_bgcolor='#144A29',
