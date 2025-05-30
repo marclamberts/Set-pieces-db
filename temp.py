@@ -16,7 +16,7 @@ except FileNotFoundError:
 
 # Required columns
 required_cols = {
-    "outcome_name", "location_x", "location_y", "play_pattern_name",
+    "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "player_name", "team_name", "player_position_name", "statsbomb_xg", "Match"
 }
 
