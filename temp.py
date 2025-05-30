@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-from mplsoccer import VerticalPitch
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Interactive Vertical Pitch", layout="centered")
@@ -34,22 +33,17 @@ filtered_df = df[
     (df["play_pattern_name"] == selected_pattern)
 ].copy()
 
-# Create pitch layout using mplsoccer (for consistency with StatsBomb coords)
-pitch = VerticalPitch(pitch_type='statsbomb', half=True)
-fig, ax = pitch.draw()
-xlim, ylim = ax.get_xlim(), ax.get_ylim()  # Needed for consistent scaling
-fig.clf()  # We only needed limits, clear the fig
+# Swap axes to make it vertical (mplsoccer vertical pitch: x is vertical)
+x = filtered_df["location_y"]
+y = filtered_df["location_x"]
 
 # Create Plotly figure
 plot = go.Figure()
 
-# Add half pitch lines using shapes
-# (Optional: You can use an image background instead)
-
-# Add goal markers with tooltips
+# Add goal markers with hover text
 plot.add_trace(go.Scatter(
-    x=filtered_df["location_x"],
-    y=filtered_df["location_y"],
+    x=x,
+    y=y,
     mode='markers',
     marker=dict(size=10, color='gold', line=dict(color='black', width=1.5)),
     text=[
@@ -65,11 +59,33 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
-# Set pitch dimensions manually (StatsBomb half-pitch: 0–120 x, 0–80 y)
+# Add basic vertical half pitch outlines (manual lines)
+# StatsBomb pitch: 120x80
+pitch_shapes = [
+    # Outer boundaries
+    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=2)),
+
+    # Penalty box
+    dict(type="rect", x0=18, y0=18, x1=62, y1=0, line=dict(color="white", width=1)),
+
+    # 6-yard box
+    dict(type="rect", x0=30, y0=6, x1=50, y1=0, line=dict(color="white", width=1)),
+
+    # Goal line
+    dict(type="line", x0=36, y0=0, x1=44, y1=0, line=dict(color="white", width=4)),
+
+    # Penalty spot
+    dict(type="circle", x0=38.5, y0=11.5, x1=41.5, y1=8.5, line=dict(color="white", width=1)),
+
+    # Center arc (just for aesthetic)
+    dict(type="circle", x0=30, y0=50, x1=50, y1=70, line=dict(color="white", width=1), opacity=0.2)
+]
+
 plot.update_layout(
     title=f"Goals from {selected_pattern}",
-    xaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+    xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+    yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False),
+    shapes=pitch_shapes,
     plot_bgcolor='#144A29',
     paper_bgcolor='#144A29',
     height=700,
