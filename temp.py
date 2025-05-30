@@ -7,9 +7,9 @@ st.set_page_config(page_title="Interactive Vertical Pitch", layout="centered")
 st.title("⚽ Interactive Goal Map by Set Piece Type")
 
 # Load local CSV
-csv_path = os.path.join(os.path.dirname(__file__), "events1.csv")
+csv_path = os.path.join(os.path.dirname(__file__), "events.xlsx")
 try:
-    df = pd.read_csv(csv_path)
+    df = pd.read_excel(csv_path)
 except FileNotFoundError:
     st.error("CSV file not found. Make sure 'events.csv' is in the same folder as this script.")
     st.stop()
@@ -60,7 +60,8 @@ plot.add_trace(go.Scatter(
             filtered_df["player_name"],
             filtered_df["team_name"],
             filtered_df["player_position_name"],
-            filtered_df["statsbomb_xg"]
+            filtered_df["statsbomb_xg"],
+            filtered_df["Match"]
         )
     ],
     hoverinfo='text',
