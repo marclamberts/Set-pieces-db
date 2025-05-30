@@ -58,7 +58,7 @@ plot.add_trace(go.Scatter(
             filtered_df["player_name"],
             filtered_df["team_name"],
             filtered_df["player_position_name"],
-            filtered_df["statsbombxg"]
+            filtered_df["statsbomb_xg"]
         )
     ],
     hoverinfo='text',
