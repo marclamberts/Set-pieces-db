@@ -8,7 +8,7 @@ st.set_page_config(page_title="Interactive Vertical Pitch", layout="centered")
 st.title("⚽ Interactive Goal Map by Set Piece Type")
 
 # Load local Excel file
-excel_path = os.path.join(os.path.dirname(__file__), "filtered_goals_first5_matches.xlsx")
+excel_path = os.path.join(os.path.dirname(__file__), "events2.xlsx")
 try:
     df = pd.read_excel(excel_path)
 except FileNotFoundError:
