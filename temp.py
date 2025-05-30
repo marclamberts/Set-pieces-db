@@ -31,8 +31,8 @@ selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
 # Filter for goals from selected set piece in upper pitch (location_x >= 60)
 filtered_df = df[
-    (df["outcome_name"] == "Goal") &
-    (df["play_pattern_name"] == selected_pattern) &
+    (df["shot.outcome.name"] == "Goal") &
+    (df["play_pattern.name"] == selected_pattern) &
     (df["location_x"] >= 60)
 ].copy()
 
