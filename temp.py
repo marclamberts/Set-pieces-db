@@ -17,7 +17,7 @@ except FileNotFoundError:
 # Required columns
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
-    "player_name", "team_name", "player_position_name", "shot.statsbomb_xg", "Match"
+    "player.name", "team.name", "position.name", "shot.statsbomb_xg", "Match"
 }
 
 missing_cols = required_cols - set(df.columns)
@@ -52,9 +52,9 @@ y = filtered_df["location_x"] - 60  # length shifted to 0-60
 hover_texts = [
     f"Player: {p}<br>Team: {t}<br>Position: {pos}<br>xG: {xg:.2f}<br>Match: {match}"
     for p, t, pos, xg, match in zip(
-        filtered_df["player_name"],
-        filtered_df["team_name"],
-        filtered_df["player_position_name"],
+        filtered_df["player.name"],
+        filtered_df["team.name"],
+        filtered_df["position.name"],
         filtered_df["shot.statsbomb_xg"],
         filtered_df["Match"]
     )
