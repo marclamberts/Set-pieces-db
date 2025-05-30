@@ -12,7 +12,7 @@ excel_path = os.path.join(os.path.dirname(__file__), "events2.xlsx")
 try:
     df = pd.read_excel(excel_path)
 except FileNotFoundError:
-    st.error("Excel file not found. Make sure 'events.xlsx' is in the same folder as this script.")
+    st.error("Excel file not found. Make sure 'events2.xlsx' is in the same folder as this script.")
     st.stop()
 
 # Function to parse 'location' column (e.g. '[x, y, z]' string) into list of floats
@@ -43,7 +43,7 @@ if missing_cols:
 set_piece_options = ["From Corner", "From Throw In", "From Free Kick"]
 selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
-# Filter for goals from selected set piece in upper pitch (location_x >= 60)
+# Initial filter: Goals from selected set piece and upper pitch half
 filtered_df = df[
     (df["shot.outcome.name"] == "Goal") &
     (df["play_pattern.name"] == selected_pattern) &
@@ -54,11 +54,49 @@ if filtered_df.empty:
     st.warning("No goals found for this set piece and pitch half.")
     st.stop()
 
-# Prepare coordinates for plot
+# --- Extra Filters in Sidebar ---
+# Dropdown/multiselects for player, team, match, position
+players = sorted(filtered_df["player.name"].dropna().unique())
+teams = sorted(filtered_df["team.name"].dropna().unique())
+matches = sorted(filtered_df["Match"].dropna().unique())
+positions = sorted(filtered_df["position.name"].dropna().unique())
+
+selected_players = st.sidebar.multiselect("Player", players, default=players)
+selected_teams = st.sidebar.multiselect("Team", teams, default=teams)
+selected_matches = st.sidebar.multiselect("Match", matches, default=matches)
+selected_positions = st.sidebar.multiselect("Position", positions, default=positions)
+
+# xG Range slider
+min_xg = float(filtered_df["shot.statsbomb_xg"].min())
+max_xg = float(filtered_df["shot.statsbomb_xg"].max())
+xg_range = st.sidebar.slider("xG Range", min_value=0.0, max_value=round(max_xg + 0.05, 2),
+                             value=(round(min_xg, 2), round(max_xg, 2)), step=0.01)
+
+# Apply extra filters
+filtered_df = filtered_df[
+    filtered_df["player.name"].isin(selected_players) &
+    filtered_df["team.name"].isin(selected_teams) &
+    filtered_df["Match"].isin(selected_matches) &
+    filtered_df["position.name"].isin(selected_positions) &
+    filtered_df["shot.statsbomb_xg"].between(xg_range[0], xg_range[1])
+]
+
+if filtered_df.empty:
+    st.warning("No goals found for this combination of filters.")
+    st.stop()
+
+# Optional data preview
+if st.checkbox("Show data table"):
+    st.dataframe(filtered_df[[
+        "player.name", "team.name", "Match", "position.name", 
+        "play_pattern.name", "shot.statsbomb_xg", "location_x", "location_y"
+    ]])
+
+# Prepare coordinates for vertical pitch
 x = filtered_df["location_y"]        # pitch width 0-80
 y = filtered_df["location_x"] - 60   # shift length 60-120 to 0-60
 
-# Build hover text including Match info
+# Hover text
 hover_texts = [
     f"Player: {p}<br>Team: {t}<br>Position: {pos}<br>xG: {xg:.2f}<br>Match: {match}"
     for p, t, pos, xg, match in zip(
@@ -70,7 +108,7 @@ hover_texts = [
     )
 ]
 
-# Create pitch plot
+# Create plot
 plot = go.Figure()
 
 plot.add_trace(go.Scatter(
@@ -87,6 +125,7 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
+# Pitch layout
 pitch_shapes = [
     dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=3)),
     dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="white", width=2)),
