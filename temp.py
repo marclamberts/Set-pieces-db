@@ -7,7 +7,7 @@ st.set_page_config(page_title="Interactive Vertical Pitch", layout="centered")
 st.title("⚽ Interactive Goal Map by Set Piece Type")
 
 # Load local CSV
-csv_path = os.path.join(os.path.dirname(__file__), "events.csv")
+csv_path = os.path.join(os.path.dirname(__file__), "events1.csv")
 try:
     df = pd.read_csv(csv_path)
 except FileNotFoundError:
