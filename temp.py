@@ -6,43 +6,61 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Interactive Vertical Pitch", layout="centered")
 st.title("⚽ Interactive Goal Map by Set Piece Type")
 
-# Load local CSV
+# Load local Excel file
 csv_path = os.path.join(os.path.dirname(__file__), "events.xlsx")
 try:
     df = pd.read_excel(csv_path)
 except FileNotFoundError:
-    st.error("CSV file not found. Make sure 'events.csv' is in the same folder as this script.")
+    st.error("Excel file not found. Make sure 'events.xlsx' is in the same folder as this script.")
     st.stop()
 
-# Ensure required columns exist
+# Required columns
 required_cols = {
     "outcome_name", "location_x", "location_y", "play_pattern_name",
-    "player_name", "team_name", "player_position_name", "statsbomb_xg"
+    "player_name", "team_name", "player_position_name", "statsbomb_xg", "Match"
 }
-if not required_cols.issubset(df.columns):
-    st.error(f"CSV must contain columns: {', '.join(required_cols)}")
+
+missing_cols = required_cols - set(df.columns)
+if missing_cols:
+    st.error(f"Excel must contain columns: {', '.join(missing_cols)}")
     st.stop()
 
-# Sidebar filter
+# Sidebar filter for set piece type
 set_piece_options = ["From Corner", "From Throw In", "From Free Kick"]
 selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
-# Filter for upper half goals from selected set piece
+# Filter for goals from selected set piece in upper pitch (location_x >= 60)
 filtered_df = df[
     (df["outcome_name"] == "Goal") &
     (df["play_pattern_name"] == selected_pattern) &
-    (df["location_x"] >= 60)  # Only show upper/attacking half
+    (df["location_x"] >= 60)
 ].copy()
 
-# Shift function to normalize pitch y-coordinates so goal line is at y=0 (top)
-def shift_y(y_val):
-    return y_val - 60
+if filtered_df.empty:
+    st.warning("No goals found for this set piece and pitch half.")
+    st.stop()
 
-# Shift the data y values accordingly to match new pitch coordinates
-y = filtered_df["location_x"] - 60  # shift location_x down by 60
-x = filtered_df["location_y"]       # width stays same (0 to 80)
+# Shift pitch coordinates: make the upper half start at y=0
+# location_x runs 0-120 (pitch length), location_y runs 0-80 (pitch width)
+# After filtering location_x >= 60, subtract 60 to set attacking half starting at 0
 
-# Create plotly figure
+# X axis: pitch width (0-80), Y axis: pitch length (60-120) shifted to 0-60
+x = filtered_df["location_y"]      # width: 0 to 80
+y = filtered_df["location_x"] - 60  # length shifted to 0-60
+
+# Build hover text including Match info
+hover_texts = [
+    f"Player: {p}<br>Team: {t}<br>Position: {pos}<br>xG: {xg:.2f}<br>Match: {match}"
+    for p, t, pos, xg, match in zip(
+        filtered_df["player_name"],
+        filtered_df["team_name"],
+        filtered_df["player_position_name"],
+        filtered_df["statsbomb_xg"],
+        filtered_df["Match"]
+    )
+]
+
+# Create plotly figure with pitch shapes
 plot = go.Figure()
 
 plot.add_trace(go.Scatter(
@@ -54,23 +72,13 @@ plot.add_trace(go.Scatter(
         color='gold',
         line=dict(color='black', width=1.5)
     ),
-    text=[
-        f"Player: {p}<br>Team: {t}<br>Position: {pos}<br>xG: {xg:.2f}"
-        for p, t, pos, xg in zip(
-            filtered_df["player_name"],
-            filtered_df["team_name"],
-            filtered_df["player_position_name"],
-            filtered_df["statsbomb_xg"],
-            filtered_df["Match"]
-        )
-    ],
+    text=hover_texts,
     hoverinfo='text',
     name='Goals'
 ))
 
-# Sharp pitch shapes, all y-coordinates shifted by -60
 pitch_shapes = [
-    # Outer boundaries (80x60)
+    # Outer boundaries (width=80, length=60)
     dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=3)),
 
     # Penalty box
