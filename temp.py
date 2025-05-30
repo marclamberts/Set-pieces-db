@@ -27,20 +27,20 @@ if not required_cols.issubset(df.columns):
 set_piece_options = ["From Corner", "From Throw In", "From Free Kick"]
 selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
-# Filter data
+# Filter for upper half goals from selected set piece
 filtered_df = df[
     (df["outcome_name"] == "Goal") &
-    (df["play_pattern_name"] == selected_pattern)
+    (df["play_pattern_name"] == selected_pattern) &
+    (df["location_x"] >= 60)  # Only show upper/attacking half
 ].copy()
 
-# Swap axes to make it vertical (StatsBomb pitch: x is vertical)
-x = filtered_df["location_y"]
-y = filtered_df["location_x"]
+# Convert StatsBomb (x=length, y=width) to vertical layout (y becomes x)
+x = filtered_df["location_y"]    # width → horizontal axis
+y = filtered_df["location_x"]    # length → vertical axis
 
-# Create Plotly figure
+# Create plotly figure
 plot = go.Figure()
 
-# Add goal markers with hover text
 plot.add_trace(go.Scatter(
     x=x,
     y=y,
@@ -59,31 +59,29 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
-# Manual pitch shapes (half pitch — attacking up)
+# Pitch shapes for upper attacking half (StatsBomb: 0–120 x, 0–80 y)
 pitch_shapes = [
-    # Outer boundaries
-    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=2)),
+    # Outer box
+    dict(type="rect", x0=0, y0=60, x1=80, y1=120, line=dict(color="white", width=2)),
 
     # Penalty box
-    dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="white", width=1)),
+    dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1)),
 
-    # 6-yard box
-    dict(type="rect", x0=30, y0=54, x1=50, y1=60, line=dict(color="white", width=1)),
+    # Six-yard box
+    dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1)),
 
     # Goal line
-    dict(type="line", x0=36, y0=60, x1=44, y1=60, line=dict(color="white", width=4)),
+    dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="white", width=4)),
 
     # Penalty spot
-    dict(type="circle", x0=38.5, y0=48.5, x1=41.5, y1=51.5, line=dict(color="white", width=1)),
-
-    # Optional arc or center line could go here
+    dict(type="circle", x0=38.5, y0=108.5, x1=41.5, y1=111.5, line=dict(color="white", width=1)),
 ]
 
-# Layout for upper half pitch (flip y-axis)
+# Final layout with vertical pitch attacking top
 plot.update_layout(
     title=f"Goals from {selected_pattern}",
     xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[60, 0], showgrid=False, zeroline=False, visible=False),  # flipped Y-axis
+    yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False),  # Y reversed
     shapes=pitch_shapes,
     plot_bgcolor='#144A29',
     paper_bgcolor='#144A29',
