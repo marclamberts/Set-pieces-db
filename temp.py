@@ -18,7 +18,7 @@ except FileNotFoundError:
 # Ensure required columns exist
 required_cols = {
     "outcome_name", "location_x", "location_y", "play_pattern_name",
-    "player_name", "team_name", "player_position_name", "statsbombxg"
+    "player_name", "team_name", "player_position_name", "statsbomb_xg"
 }
 if not required_cols.issubset(df.columns):
     st.error(f"CSV must contain columns: {', '.join(required_cols)}")
