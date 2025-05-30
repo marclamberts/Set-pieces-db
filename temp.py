@@ -17,7 +17,7 @@ except FileNotFoundError:
 # Required columns
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
-    "player_name", "team_name", "player_position_name", "statsbomb_xg", "Match"
+    "player_name", "team_name", "player_position_name", "shot.statsbomb_xg", "Match"
 }
 
 missing_cols = required_cols - set(df.columns)
@@ -55,7 +55,7 @@ hover_texts = [
         filtered_df["player_name"],
         filtered_df["team_name"],
         filtered_df["player_position_name"],
-        filtered_df["statsbomb_xg"],
+        filtered_df["shot.statsbomb_xg"],
         filtered_df["Match"]
     )
 ]
