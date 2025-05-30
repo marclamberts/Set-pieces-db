@@ -34,9 +34,13 @@ filtered_df = df[
     (df["location_x"] >= 60)  # Only show upper/attacking half
 ].copy()
 
-# Convert StatsBomb (x=length, y=width) to vertical layout (y becomes x)
-x = filtered_df["location_y"]    # width → horizontal axis
-y = filtered_df["location_x"]    # length → vertical axis
+# Shift function to normalize pitch y-coordinates so goal line is at y=0 (top)
+def shift_y(y_val):
+    return y_val - 60
+
+# Shift the data y values accordingly to match new pitch coordinates
+y = filtered_df["location_x"] - 60  # shift location_x down by 60
+x = filtered_df["location_y"]       # width stays same (0 to 80)
 
 # Create plotly figure
 plot = go.Figure()
@@ -45,7 +49,11 @@ plot.add_trace(go.Scatter(
     x=x,
     y=y,
     mode='markers',
-    marker=dict(size=10, color='gold', line=dict(color='black', width=1.5)),
+    marker=dict(
+        size=10,
+        color='gold',
+        line=dict(color='black', width=1.5)
+    ),
     text=[
         f"Player: {p}<br>Team: {t}<br>Position: {pos}<br>xG: {xg:.2f}"
         for p, t, pos, xg in zip(
@@ -59,29 +67,28 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
-# Pitch shapes for upper attacking half (StatsBomb: 0–120 x, 0–80 y)
+# Sharp pitch shapes, all y-coordinates shifted by -60
 pitch_shapes = [
-    # Outer box
-    dict(type="rect", x0=0, y0=60, x1=80, y1=120, line=dict(color="white", width=2)),
+    # Outer boundaries (80x60)
+    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="white", width=3)),
 
     # Penalty box
-    dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1)),
+    dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="white", width=2)),
 
     # Six-yard box
-    dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1)),
+    dict(type="rect", x0=30, y0=54, x1=50, y1=60, line=dict(color="white", width=2)),
 
     # Goal line
-    dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="white", width=4)),
+    dict(type="line", x0=36, y0=60, x1=44, y1=60, line=dict(color="white", width=5)),
 
-    # Penalty spot
-    dict(type="circle", x0=38.5, y0=108.5, x1=41.5, y1=111.5, line=dict(color="white", width=1)),
+    # Penalty spot (circle)
+    dict(type="circle", x0=38.5, y0=48.5, x1=41.5, y1=51.5, line=dict(color="white", width=2)),
 ]
 
-# Final layout with vertical pitch attacking top
 plot.update_layout(
     title=f"Goals from {selected_pattern}",
     xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False),  # Y reversed
+    yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False, scaleanchor="x"),
     shapes=pitch_shapes,
     plot_bgcolor='#144A29',
     paper_bgcolor='#144A29',
