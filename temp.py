@@ -53,16 +53,16 @@ if filtered_df.empty:
     st.warning("No goals found for this set piece and pitch half.")
     st.stop()
 
-# Dropdown filters
-players = sorted(filtered_df["player.name"].dropna().unique())
-teams = sorted(filtered_df["team.name"].dropna().unique())
-matches = sorted(filtered_df["Match"].dropna().unique())
-positions = sorted(filtered_df["position.name"].dropna().unique())
+# Dropdown filters with "All" option
+players = ["All"] + sorted(filtered_df["player.name"].dropna().unique())
+teams = ["All"] + sorted(filtered_df["team.name"].dropna().unique())
+matches = ["All"] + sorted(filtered_df["Match"].dropna().unique())
+positions = ["All"] + sorted(filtered_df["position.name"].dropna().unique())
 
-selected_player = st.sidebar.selectbox("Player", players)
-selected_team = st.sidebar.selectbox("Team", teams)
-selected_match = st.sidebar.selectbox("Match", matches)
-selected_position = st.sidebar.selectbox("Position", positions)
+selected_player = st.sidebar.selectbox("Player", players, index=0)
+selected_team = st.sidebar.selectbox("Team", teams, index=0)
+selected_match = st.sidebar.selectbox("Match", matches, index=0)
+selected_position = st.sidebar.selectbox("Position", positions, index=0)
 
 # xG Range slider
 min_xg = float(filtered_df["shot.statsbomb_xg"].min())
@@ -70,13 +70,19 @@ max_xg = float(filtered_df["shot.statsbomb_xg"].max())
 xg_range = st.sidebar.slider("xG Range", min_value=0.0, max_value=round(max_xg + 0.05, 2),
                              value=(round(min_xg, 2), round(max_xg, 2)), step=0.01)
 
-# Apply all filters
+# Apply filters conditionally
+if selected_player != "All":
+    filtered_df = filtered_df[filtered_df["player.name"] == selected_player]
+if selected_team != "All":
+    filtered_df = filtered_df[filtered_df["team.name"] == selected_team]
+if selected_match != "All":
+    filtered_df = filtered_df[filtered_df["Match"] == selected_match]
+if selected_position != "All":
+    filtered_df = filtered_df[filtered_df["position.name"] == selected_position]
+
+# xG range filter
 filtered_df = filtered_df[
-    (filtered_df["player.name"] == selected_player) &
-    (filtered_df["team.name"] == selected_team) &
-    (filtered_df["Match"] == selected_match) &
-    (filtered_df["position.name"] == selected_position) &
-    (filtered_df["shot.statsbomb_xg"].between(xg_range[0], xg_range[1]))
+    filtered_df["shot.statsbomb_xg"].between(xg_range[0], xg_range[1])
 ]
 
 if filtered_df.empty:
