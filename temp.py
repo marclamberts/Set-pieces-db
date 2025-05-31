@@ -38,7 +38,8 @@ df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_loca
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "team.name", "position.name", "shot.statsbomb_xg", "Match",
-    "shot.first_time", "shot.body_part.name"
+    "shot.first_time", "shot.body_part.name",
+    "competition.country_name", "competition.competition_name", "season.season_name"
 }
 missing_cols = required_cols - set(df.columns)
 if missing_cols:
@@ -70,6 +71,15 @@ selected_team = st.sidebar.selectbox("Team", teams)
 selected_match = st.sidebar.selectbox("Match", matches)
 selected_position = st.sidebar.selectbox("Position", positions)
 
+# Nation, League, Season filters
+nations = ["All"] + sorted(filtered_df["competition.country_name"].dropna().unique())
+leagues = ["All"] + sorted(filtered_df["competition.competition_name"].dropna().unique())
+seasons = ["All"] + sorted(filtered_df["season.season_name"].dropna().unique())
+
+selected_nation = st.sidebar.selectbox("Nation", nations)
+selected_league = st.sidebar.selectbox("League", leagues)
+selected_season = st.sidebar.selectbox("Season", seasons)
+
 # xG Range slider
 min_xg = float(filtered_df["shot.statsbomb_xg"].min())
 max_xg = float(filtered_df["shot.statsbomb_xg"].max())
@@ -89,6 +99,13 @@ if selected_first_time != "All":
     filtered_df = filtered_df[filtered_df["shot.first_time"] == (selected_first_time == "True")]
 if selected_body_part != "All":
     filtered_df = filtered_df[filtered_df["shot.body_part.name"] == selected_body_part]
+if selected_nation != "All":
+    filtered_df = filtered_df[filtered_df["competition.country_name"] == selected_nation]
+if selected_league != "All":
+    filtered_df = filtered_df[filtered_df["competition.competition_name"] == selected_league]
+if selected_season != "All":
+    filtered_df = filtered_df[filtered_df["season.season_name"] == selected_season]
+
 filtered_df = filtered_df[filtered_df["shot.statsbomb_xg"].between(xg_range[0], xg_range[1])]
 
 if filtered_df.empty:
@@ -100,7 +117,8 @@ if st.checkbox("Show data table"):
     st.dataframe(filtered_df[[
         "team.name", "Match", "position.name", 
         "play_pattern.name", "shot.first_time", "shot.body_part.name",
-        "shot.statsbomb_xg", "location_x", "location_y"
+        "shot.statsbomb_xg", "location_x", "location_y",
+        "competition.country_name", "competition.competition_name", "season.season_name"
     ]])
 
 # Prepare pitch coordinates
