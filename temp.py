@@ -4,8 +4,9 @@ import os
 import plotly.graph_objects as go
 import ast
 
-st.set_page_config(page_title="Interactive Goal Map", layout="centered")
+st.set_page_config(page_title="Goal Map | Set Pieces", layout="wide")
 st.title("⚽ Goal Map by Set Piece Type")
+st.markdown("##### A detailed interactive visualization of goals from set pieces — refined in Washington Post style.")
 
 # Load and merge Excel files
 def load_and_merge_excel(files):
@@ -20,10 +21,9 @@ def load_and_merge_excel(files):
             st.stop()
     return pd.concat(dataframes, ignore_index=True)
 
-# Load both Excel files
 df = load_and_merge_excel(["events2.xlsx", "events.xlsx"])
 
-# Parse 'location' column
+# Parse location column
 def parse_location(loc):
     try:
         if isinstance(loc, str):
@@ -35,7 +35,7 @@ def parse_location(loc):
 
 df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
 
-# Check required columns
+# Validate required columns
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "player.name", "team.name", "position.name", "shot.statsbomb_xg", "Match"
@@ -45,17 +45,18 @@ if missing_cols:
     st.error(f"Missing columns: {', '.join(missing_cols)}")
     st.stop()
 
-# Sidebar: Set piece type with "All"
-set_piece_options = ["All"] + ["From Corner", "From Throw In", "From Free Kick"]
-selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options, index=0)
+# Sidebar filters
+st.sidebar.header("Filters")
+set_piece_options = ["All", "From Corner", "From Throw In", "From Free Kick"]
+selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
-# Base filter: only goals and upper half
+# Initial filter: goals from upper half
 filtered_df = df[
     (df["shot.outcome.name"] == "Goal") &
     (df["location_x"] >= 60)
 ].copy()
 
-# Apply set piece filter if not "All"
+# Set piece filter
 if selected_pattern != "All":
     filtered_df = filtered_df[filtered_df["play_pattern.name"] == selected_pattern]
 
@@ -63,18 +64,18 @@ if filtered_df.empty:
     st.warning("No goals found for selected set piece and area.")
     st.stop()
 
-# Dropdowns with "All"
+# Dropdowns
 players = ["All"] + sorted(filtered_df["player.name"].dropna().unique())
 teams = ["All"] + sorted(filtered_df["team.name"].dropna().unique())
 matches = ["All"] + sorted(filtered_df["Match"].dropna().unique())
 positions = ["All"] + sorted(filtered_df["position.name"].dropna().unique())
 
-selected_player = st.sidebar.selectbox("Player", players, index=0)
-selected_team = st.sidebar.selectbox("Team", teams, index=0)
-selected_match = st.sidebar.selectbox("Match", matches, index=0)
-selected_position = st.sidebar.selectbox("Position", positions, index=0)
+selected_player = st.sidebar.selectbox("Player", players)
+selected_team = st.sidebar.selectbox("Team", teams)
+selected_match = st.sidebar.selectbox("Match", matches)
+selected_position = st.sidebar.selectbox("Position", positions)
 
-# xG Range slider
+# xG range slider
 min_xg = float(filtered_df["shot.statsbomb_xg"].min())
 max_xg = float(filtered_df["shot.statsbomb_xg"].max())
 xg_range = st.sidebar.slider("xG Range", min_value=0.0, max_value=round(max_xg + 0.05, 2),
@@ -90,7 +91,6 @@ if selected_match != "All":
 if selected_position != "All":
     filtered_df = filtered_df[filtered_df["position.name"] == selected_position]
 
-# xG filter
 filtered_df = filtered_df[filtered_df["shot.statsbomb_xg"].between(xg_range[0], xg_range[1])]
 
 if filtered_df.empty:
@@ -104,13 +104,13 @@ if st.checkbox("Show data table"):
         "play_pattern.name", "shot.statsbomb_xg", "location_x", "location_y"
     ]])
 
-# Prepare coordinates
+# Prepare plot coordinates
 x = filtered_df["location_y"]
 y = filtered_df["location_x"] - 60
 
-# Hover text
+# Custom hover text
 hover_texts = [
-    f"<b>Player:</b> {p}<br><b>Team:</b> {t}<br><b>Pos:</b> {pos}<br><b>xG:</b> {xg:.2f}<br><b>Match:</b> {match}"
+    f"<b>Player:</b> {p}<br><b>Team:</b> {t}<br><b>Position:</b> {pos}<br><b>xG:</b> {xg:.2f}<br><b>Match:</b> {match}"
     for p, t, pos, xg, match in zip(
         filtered_df["player.name"],
         filtered_df["team.name"],
@@ -120,37 +120,59 @@ hover_texts = [
     )
 ]
 
-# Build pitch: Washington Post style (clean, gray tones)
-plot = go.Figure()
+# Create figure
+fig = go.Figure()
 
-plot.add_trace(go.Scatter(
+# Add goal points
+fig.add_trace(go.Scatter(
     x=x,
     y=y,
     mode='markers',
-    marker=dict(size=10, color='#FFD700', line=dict(color='black', width=1.2)),
+    marker=dict(
+        size=12,
+        color='#FFD700',
+        line=dict(width=1.5, color='black'),
+        opacity=0.95
+    ),
     text=hover_texts,
     hoverinfo='text',
-    name='Goals'
+    name="Goals"
 ))
 
+# Half-pitch design (Washington Post style)
 pitch_shapes = [
-    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="#CCCCCC", width=2)),  # Outer box
-    dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="#AAAAAA", width=1)),  # Penalty area
-    dict(type="rect", x0=30, y0=54, x1=50, y1=60, line=dict(color="#AAAAAA", width=1)),  # 6-yard box
-    dict(type="line", x0=36, y0=60, x1=44, y1=60, line=dict(color="#AAAAAA", width=4)),  # Goal line
-    dict(type="circle", x0=38.5, y0=48.5, x1=41.5, y1=51.5, line=dict(color="#AAAAAA", width=1)),  # Penalty spot
+    # Pitch boundary
+    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="#B0B0B0", width=2)),
+    # Penalty area
+    dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="#AAAAAA", width=1)),
+    # Six-yard box
+    dict(type="rect", x0=30, y0=54, x1=50, y1=60, line=dict(color="#AAAAAA", width=1)),
+    # Goal line
+    dict(type="line", x0=36, y0=60, x1=44, y1=60, line=dict(color="black", width=4)),
+    # Penalty spot
+    dict(type="circle", x0=39.5, y0=48.5, x1=40.5, y1=49.5, line=dict(color="#AAAAAA", width=1)),
+    # Penalty arc (partial circle)
+    dict(
+        type="path",
+        path="M36,48 Q40,44 44,48",
+        line=dict(color="#AAAAAA", width=1)
+    )
 ]
 
-plot.update_layout(
-    title=dict(text=f"Goals from {selected_pattern}", font=dict(size=22, family="Georgia")),
-    xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False, scaleanchor="x"),
+fig.update_layout(
+    title=dict(
+        text=f"Goals from {selected_pattern}" if selected_pattern != "All" else "All Set Piece Goals",
+        x=0.5,
+        font=dict(size=24, family="Georgia", color="#333333")
+    ),
+    xaxis=dict(range=[0, 80], showgrid=False, visible=False),
+    yaxis=dict(range=[0, 60], showgrid=False, visible=False, scaleanchor="x"),
     shapes=pitch_shapes,
-    plot_bgcolor='#F9F9F9',
-    paper_bgcolor='#F9F9F9',
-    height=700,
-    margin=dict(l=20, r=20, t=50, b=20),
-    font=dict(family="Georgia", size=14, color="#333333")
+    plot_bgcolor="#FAFAFA",
+    paper_bgcolor="#FAFAFA",
+    margin=dict(l=20, r=20, t=60, b=20),
+    font=dict(family="Georgia", size=14, color="#333333"),
+    showlegend=False
 )
 
-st.plotly_chart(plot, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
