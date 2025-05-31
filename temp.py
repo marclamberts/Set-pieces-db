@@ -12,19 +12,36 @@ def load_data():
     base_path = os.path.dirname(__file__)
     files = ["events2.xlsx", "events.xlsx", "norway.xlsx"]
     dfs = []
+
     for f in files:
         path = os.path.join(base_path, f)
         try:
             df = pd.read_excel(path)
+
+            # Rename columns to ensure consistency
+            df.rename(columns={
+                "shot.outcome": "shot.outcome.name",
+                "play_pattern": "play_pattern.name",
+                "shot.body_part": "shot.body_part.name",
+                "shot.first_time.": "shot.first_time",
+            }, inplace=True)
+
             dfs.append(df)
         except FileNotFoundError:
-            # File not found, skip
             pass
+
     if not dfs:
-        st.error("No data files found. Please add at least 'events2.xlsx' to the folder.")
+        st.error("No data files found. Please add at least one Excel file to the folder.")
         st.stop()
-    # Concatenate all dataframes vertically
-    return pd.concat(dfs, ignore_index=True)
+
+    merged_df = pd.concat(dfs, ignore_index=True)
+
+    # Debug: show source info
+    st.write("✅ Loaded Data Summary")
+    st.write("Total rows:", len(merged_df))
+    st.write("Matches available:", merged_df['Match'].dropna().unique())
+
+    return merged_df
 
 df = load_data()
 
@@ -45,11 +62,17 @@ required_cols = {
 }
 missing_cols = required_cols - set(df.columns)
 if missing_cols:
+    st.write("❌ DataFrame columns:", df.columns.tolist())
     st.error(f"Missing required columns: {', '.join(missing_cols)}")
     st.stop()
 
 # Base filter: goals in upper half
 filtered_df = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
+
+# Debug: see if Norway data made it in
+st.write("✅ After base filtering")
+st.write("Teams (sample):", filtered_df['team.name'].dropna().unique())
+st.write("Matches (sample):", filtered_df['Match'].dropna().unique())
 
 # Sidebar filters
 st.sidebar.header("Filters")
