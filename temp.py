@@ -13,35 +13,23 @@ def load_data():
     files = ["events2.xlsx", "events.xlsx", "norway.xlsx"]
     dfs = []
 
+    st.subheader("📂 File Loading Logs")
     for f in files:
         path = os.path.join(base_path, f)
+        st.write(f"🔍 Trying to load: `{f}`")
         try:
             df = pd.read_excel(path)
-
-            # Rename columns to ensure consistency
-            df.rename(columns={
-                "shot.outcome": "shot.outcome.name",
-                "play_pattern": "play_pattern.name",
-                "shot.body_part": "shot.body_part.name",
-                "shot.first_time.": "shot.first_time",
-            }, inplace=True)
-
+            st.write(f"✅ Loaded `{f}` | Rows: {len(df)}")
+            st.write(f"📋 Columns: {df.columns.tolist()}")
             dfs.append(df)
-        except FileNotFoundError:
-            pass
+        except Exception as e:
+            st.write(f"❌ Failed to load `{f}`: {e}")
 
     if not dfs:
-        st.error("No data files found. Please add at least one Excel file to the folder.")
+        st.error("No data files loaded. Ensure at least one Excel file is present.")
         st.stop()
 
-    merged_df = pd.concat(dfs, ignore_index=True)
-
-    # Debug: show source info
-    st.write("✅ Loaded Data Summary")
-    st.write("Total rows:", len(merged_df))
-    st.write("Matches available:", merged_df['Match'].dropna().unique())
-
-    return merged_df
+    return pd.concat(dfs, ignore_index=True)
 
 df = load_data()
 
@@ -62,17 +50,11 @@ required_cols = {
 }
 missing_cols = required_cols - set(df.columns)
 if missing_cols:
-    st.write("❌ DataFrame columns:", df.columns.tolist())
     st.error(f"Missing required columns: {', '.join(missing_cols)}")
     st.stop()
 
-# Base filter: goals in upper half
+# Filter: goals in upper half of pitch
 filtered_df = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
-
-# Debug: see if Norway data made it in
-st.write("✅ After base filtering")
-st.write("Teams (sample):", filtered_df['team.name'].dropna().unique())
-st.write("Matches (sample):", filtered_df['Match'].dropna().unique())
 
 # Sidebar filters
 st.sidebar.header("Filters")
@@ -85,11 +67,9 @@ selected_first_time = st.sidebar.selectbox("First-Time Shot", first_time_options
 body_parts = ["All"] + sorted(filtered_df["shot.body_part.name"].dropna().unique())
 selected_body_part = st.sidebar.selectbox("Body Part Used", body_parts)
 
-teams = ["All"] + sorted(filtered_df["team.name"].dropna().unique())
 matches = ["All"] + sorted(filtered_df["Match"].dropna().unique())
 positions = ["All"] + sorted(filtered_df["position.name"].dropna().unique())
 
-selected_team = st.sidebar.selectbox("Team", teams)
 selected_match = st.sidebar.selectbox("Match", matches)
 selected_position = st.sidebar.selectbox("Position", positions)
 
@@ -101,8 +81,6 @@ xg_range = st.sidebar.slider("xG Range", min_value=0.0, max_value=round(max_xg +
 # Apply filters
 if selected_pattern != "All":
     filtered_df = filtered_df[filtered_df["play_pattern.name"] == selected_pattern]
-if selected_team != "All":
-    filtered_df = filtered_df[filtered_df["team.name"] == selected_team]
 if selected_match != "All":
     filtered_df = filtered_df[filtered_df["Match"] == selected_match]
 if selected_position != "All":
@@ -117,6 +95,7 @@ if filtered_df.empty:
     st.warning("No goals found for this combination of filters.")
     st.stop()
 
+# Show table
 if st.checkbox("Show data table"):
     st.dataframe(filtered_df[[
         "team.name", "Match", "position.name",
@@ -124,6 +103,7 @@ if st.checkbox("Show data table"):
         "shot.statsbomb_xg", "location_x", "location_y"
     ]])
 
+# Prepare data for plot
 x = filtered_df["location_y"]
 y = filtered_df["location_x"] - 60
 
@@ -140,6 +120,7 @@ hover_texts = [
     )
 ]
 
+# Create goal plot
 plot = go.Figure()
 
 plot.add_trace(go.Scatter(
@@ -152,6 +133,7 @@ plot.add_trace(go.Scatter(
     name='Goals'
 ))
 
+# Draw pitch
 pitch_shapes = [
     dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="#CCCCCC", width=2)),
     dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="#AAAAAA", width=1)),
