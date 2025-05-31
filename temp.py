@@ -10,7 +10,7 @@ st.title("⚽ Goal Map by Set Piece Type")
 # Load and merge up to 3 Excel files
 def load_data():
     base_path = os.path.dirname(__file__)
-    files = ["events2.xlsx", "events.xlsx", "norway.xlsx"]
+    files = ["events2.xlsx","events.xlsx","norway.xlsx"]
     dfs = []
 
     st.subheader("📂 File Loading Logs")
