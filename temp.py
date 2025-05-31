@@ -7,21 +7,24 @@ import ast
 st.set_page_config(page_title="Interactive Goal Map", layout="centered")
 st.title("⚽ Goal Map by Set Piece Type")
 
-# Load and merge Excel files
+# Load and merge up to 3 Excel files
 def load_data():
-    path_1 = os.path.join(os.path.dirname(__file__), "events2.xlsx")
-    path_2 = os.path.join(os.path.dirname(__file__), "events.xlsx")  # optional second file
-    try:
-        df1 = pd.read_excel(path_1)
-    except FileNotFoundError:
-        st.error("File 'events2.xlsx' not found.")
+    base_path = os.path.dirname(__file__)
+    files = ["events2.xlsx", "events.xlsx", "Norway.xlsx"]
+    dfs = []
+    for f in files:
+        path = os.path.join(base_path, f)
+        try:
+            df = pd.read_excel(path)
+            dfs.append(df)
+        except FileNotFoundError:
+            # File not found, skip
+            pass
+    if not dfs:
+        st.error("No data files found. Please add at least 'events2.xlsx' to the folder.")
         st.stop()
-    try:
-        df2 = pd.read_excel(path_2)
-        df = pd.concat([df1, df2], ignore_index=True)
-    except FileNotFoundError:
-        df = df1  # fallback if only one file exists
-    return df
+    # Concatenate all dataframes vertically
+    return pd.concat(dfs, ignore_index=True)
 
 df = load_data()
 
@@ -34,7 +37,7 @@ def parse_location(loc):
 
 df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
 
-# Ensure all necessary columns exist
+# Check required columns
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "team.name", "position.name", "shot.statsbomb_xg", "Match",
@@ -53,15 +56,12 @@ st.sidebar.header("Filters")
 set_piece_options = ["All", "From Corner", "From Throw In", "From Free Kick"]
 selected_pattern = st.sidebar.selectbox("Set Piece Type", set_piece_options)
 
-# First-time shot filter
 first_time_options = ["All", "True", "False"]
 selected_first_time = st.sidebar.selectbox("First-Time Shot", first_time_options)
 
-# Body part filter
 body_parts = ["All"] + sorted(filtered_df["shot.body_part.name"].dropna().unique())
 selected_body_part = st.sidebar.selectbox("Body Part Used", body_parts)
 
-# Team, Match, Position filters
 teams = ["All"] + sorted(filtered_df["team.name"].dropna().unique())
 matches = ["All"] + sorted(filtered_df["Match"].dropna().unique())
 positions = ["All"] + sorted(filtered_df["position.name"].dropna().unique())
@@ -70,7 +70,6 @@ selected_team = st.sidebar.selectbox("Team", teams)
 selected_match = st.sidebar.selectbox("Match", matches)
 selected_position = st.sidebar.selectbox("Position", positions)
 
-# xG Range slider
 min_xg = float(filtered_df["shot.statsbomb_xg"].min())
 max_xg = float(filtered_df["shot.statsbomb_xg"].max())
 xg_range = st.sidebar.slider("xG Range", min_value=0.0, max_value=round(max_xg + 0.05, 2),
@@ -95,19 +94,16 @@ if filtered_df.empty:
     st.warning("No goals found for this combination of filters.")
     st.stop()
 
-# Optional data table
 if st.checkbox("Show data table"):
     st.dataframe(filtered_df[[
-        "team.name", "Match", "position.name", 
+        "team.name", "Match", "position.name",
         "play_pattern.name", "shot.first_time", "shot.body_part.name",
         "shot.statsbomb_xg", "location_x", "location_y"
     ]])
 
-# Prepare pitch coordinates
 x = filtered_df["location_y"]
 y = filtered_df["location_x"] - 60
 
-# Hover text
 hover_texts = [
     f"<b>Team:</b> {t}<br><b>Match:</b> {m}<br><b>Pos:</b> {p}<br><b>xG:</b> {xg:.2f}"
     f"<br><b>First-Time:</b> {ft}<br><b>Body:</b> {bp}"
@@ -121,7 +117,6 @@ hover_texts = [
     )
 ]
 
-# Create Plotly pitch (Washington Post-style)
 plot = go.Figure()
 
 plot.add_trace(go.Scatter(
