@@ -10,7 +10,7 @@ st.title("⚽ Goal Map by Set Piece Type")
 # Load and merge Excel files
 def load_data():
     path_1 = os.path.join(os.path.dirname(__file__), "events2.xlsx")
-    path_2 = os.path.join(os.path.dirname(__file__), "Norway.xlsx")  # optional second file
+    path_2 = os.path.join(os.path.dirname(__file__), "merged_output.xlsx")  # optional second file
     try:
         df1 = pd.read_excel(path_1)
     except FileNotFoundError:
