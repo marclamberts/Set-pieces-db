@@ -7,13 +7,21 @@ import ast
 st.set_page_config(page_title="Interactive Goal Map", layout="centered")
 st.title("⚽ Goal Map by Set Piece Type")
 
-# Load local Excel file
-excel_path = os.path.join(os.path.dirname(__file__), "events2.xlsx")
-try:
-    df = pd.read_excel(excel_path)
-except FileNotFoundError:
-    st.error("Excel file not found. Make sure 'events2.xlsx' is in the same folder as this script.")
-    st.stop()
+# Load and merge Excel files
+def load_and_merge_excel(files):
+    dataframes = []
+    for file in files:
+        path = os.path.join(os.path.dirname(__file__), file)
+        try:
+            df = pd.read_excel(path)
+            dataframes.append(df)
+        except FileNotFoundError:
+            st.error(f"File not found: {file}")
+            st.stop()
+    return pd.concat(dataframes, ignore_index=True)
+
+# Load both Excel files
+df = load_and_merge_excel(["events2.xlsx", "events.xlsx"])
 
 # Parse 'location' column
 def parse_location(loc):
