@@ -123,7 +123,7 @@ y = filtered["location_x"] - 60
 
 hover_texts = [
     f"<b>{row['team.name']}</b> vs {row['Match']}<br>"
-    f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
+    f"{row['shot.statsbomb_xg']:.2f}<br>"  # Removed "xG:" label here
     f"Body: {row['shot.body_part.name']}<br>"
     f"Position: {row['position.name']}"
     for _, row in filtered.iterrows()
@@ -163,7 +163,7 @@ fig.update_layout(
     )
 )
 
-# Display output with two tabs
+# Display output with two tabs only
 tab1, tab2 = st.tabs(["📊 Goal Map", "📋 Data Table"])
 
 with tab1:
