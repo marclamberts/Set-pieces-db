@@ -7,11 +7,19 @@ import plotly.graph_objects as go
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
-# Password Gate
+# Password Gate with session state
 PASSWORD = "PrincessWay2526"
-password_input = st.text_input("Enter password to continue:", type="password")
-if password_input != PASSWORD:
-    st.stop()
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    password_input = st.text_input("Enter password to continue:", type="password")
+    if password_input == PASSWORD:
+        st.session_state.authenticated = True
+        st.experimental_rerun()
+    else:
+        st.stop()
 
 st.title("Goals from Set Pieces")
 
@@ -109,7 +117,7 @@ col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
 col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
 # -------------------- Tabs --------------------
-tab1, tab2 = st.tabs(["🎯 Goal Map", "📋 Data Table"])
+tab1, tab2, tab3 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test"])
 
 with tab1:
     st.subheader("Set Piece Goal Locations")
@@ -152,6 +160,9 @@ with tab1:
 
 with tab2:
     st.dataframe(filtered)
+
+with tab3:
+    st.write("This is the test tab. Add your content here!")
 
 # -------------------- Download --------------------
 st.download_button(
