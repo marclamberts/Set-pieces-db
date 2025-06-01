@@ -4,10 +4,10 @@ import os
 import plotly.graph_objects as go
 import ast
 
-st.set_page_config(page_title="Advanced Goal Map", layout="wide")
-st.title("⚽ Advanced Set Piece Goal Analysis")
+st.set_page_config(page_title="Database", layout="wide")
+st.title("Goals from set pieces")
 
-# Apply Economist-style colors
+# Economist-style colors
 ECONOMIST_COLORS = {
     "background": "#f5f5f5",
     "primary": "#3d6e70",
@@ -28,23 +28,16 @@ def load_data():
 
 df = load_data()
 
-# Parse location into a separate DataFrame to avoid fragmentation warning
+# Parse location
 def parse_location(loc):
     try:
         return ast.literal_eval(loc) if isinstance(loc, str) else loc
     except:
         return [None, None, None]
 
-location_df = df['location'].apply(parse_location).apply(pd.Series)
-location_df.columns = ['location_x', 'location_y', 'location_z']
+df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
 
-# Concatenate parsed location columns all at once
-df = pd.concat([df, location_df], axis=1)
-
-# Optionally defragment if needed (uncomment if warning persists)
-# df = df.copy()
-
-# Check required columns
+# Required columns check
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "team.name", "position.name", "shot.statsbomb_xg", "Match",
@@ -55,36 +48,47 @@ if missing := (required_cols - set(df.columns)):
     st.error(f"Missing columns: {missing}")
     st.stop()
 
-# Filter for shots with valid location and xG
+# Filter shots
 df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
 df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
-# Sidebar filters with Economist styling
+# Sidebar filters with two columns
 with st.sidebar:
     st.markdown(f"""
         <style>
             .sidebar .sidebar-content {{
                 background-color: {ECONOMIST_COLORS['background']};
             }}
-            .stSelectbox, .stSlider {{
-                margin-bottom: 1rem;
-            }}
         </style>
     """, unsafe_allow_html=True)
-    
-    st.header("🎯 Filters")
-    filters = {
-        "Set Piece Type": st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist()),
-        "Team": st.selectbox("Team", ["All"] + df["team.name"].dropna().unique().tolist()),
-        "Match": st.selectbox("Match", ["All"] + df["Match"].dropna().unique().tolist()),
-        "Position": st.selectbox("Position", ["All"] + df["position.name"].dropna().unique().tolist()),
-        "Body Part": st.selectbox("Body Part", ["All"] + df["shot.body_part.name"].dropna().unique().tolist()),
-        "Nation": st.selectbox("Nation", ["All"] + df["competition.country_name"].dropna().unique().tolist()),
-        "League": st.selectbox("League", ["All"] + df["competition.competition_name"].dropna().unique().tolist()),
-        "Season": st.selectbox("Season", ["All"] + df["season.season_name"].dropna().unique().tolist()),
-        "First-Time": st.selectbox("First-Time Shot", ["All", "True", "False"]),
-    }
+
+    st.header("Filters")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        filters = {}
+        filters["Set Piece Type"] = st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist())
+        filters["Team"] = st.selectbox("Team", ["All"] + df["team.name"].dropna().unique().tolist())
+        filters["Position"] = st.selectbox("Position", ["All"] + df["position.name"].dropna().unique().tolist())
+        filters["Nation"] = st.selectbox("Nation", ["All"] + df["competition.country_name"].dropna().unique().tolist())
+
+    with col2:
+        filters["Match"] = st.selectbox("Match", ["All"] + df["Match"].dropna().unique().tolist())
+        filters["Body Part"] = st.selectbox("Body Part", ["All"] + df["shot.body_part.name"].dropna().unique().tolist())
+        filters["League"] = st.selectbox("League", ["All"] + df["competition.competition_name"].dropna().unique().tolist())
+        filters["Season"] = st.selectbox("Season", ["All"] + df["season.season_name"].dropna().unique().tolist())
+
+    filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "True", "False"])
     xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01)
+
+    st.markdown("----")
+    st.markdown(f"""
+        <div style="color: {ECONOMIST_COLORS['primary']}; font-weight: bold;">
+            <p>Total Goals: {len(df_goals)}</p>
+            <p>Avg. xG: {round(df_goals['shot.statsbomb_xg'].mean(), 3)}</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 # Apply filters
 filtered = df_goals.copy()
@@ -110,27 +114,17 @@ if filters["First-Time"] != "All":
 
 filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
 
-# Show summary stats with Economist colors
-st.sidebar.markdown("----")
-st.sidebar.markdown(f"""
-    <div style="color: {ECONOMIST_COLORS['primary']}; font-weight: bold;">
-        <p>Total Goals: {len(filtered)}</p>
-        <p>Avg. xG: {round(filtered['shot.statsbomb_xg'].mean(), 3)}</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# Exit early if no data
 if filtered.empty:
     st.warning("No goals found for this filter.")
     st.stop()
 
-# Pitch plot with Economist styling
+# Create goal map
 x = filtered["location_y"]
 y = filtered["location_x"] - 60
 
 hover_texts = [
     f"<b>{row['team.name']}</b> vs {row['Match']}<br>"
-    f"{row['shot.statsbomb_xg']:.2f}<br>"  # No 'xG:' label here
+    f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
     f"Body: {row['shot.body_part.name']}<br>"
     f"Position: {row['position.name']}"
     for _, row in filtered.iterrows()
@@ -150,7 +144,6 @@ fig.add_trace(go.Scatter(
     hoverinfo="text"
 ))
 
-# Pitch shapes (simplified)
 fig.update_layout(
     title=f"<b>Goal Map: {filters['Set Piece Type']}</b>",
     title_font=dict(size=20, color=ECONOMIST_COLORS['text']),
@@ -170,14 +163,13 @@ fig.update_layout(
     )
 )
 
-# Display output with two tabs only
+# Show tabs (goal map and data)
 tab1, tab2 = st.tabs(["📊 Goal Map", "📋 Data Table"])
 
 with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    # Style the dataframe with Economist colors
     st.dataframe(
         filtered[[
             "team.name", "Match", "play_pattern.name", "position.name",
@@ -189,7 +181,7 @@ with tab2:
         ], axis=1)
     )
 
-# Optional export button with Economist styling
+# Export filtered data
 st.download_button(
     label="📥 Download Filtered Data",
     data=filtered.to_csv(index=False),
@@ -197,7 +189,7 @@ st.download_button(
     help="Download the filtered data as a CSV file"
 )
 
-# Apply global styling
+# Global style
 st.markdown(f"""
     <style>
         .main {{
