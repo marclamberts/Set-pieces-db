@@ -11,7 +11,6 @@ st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
 PASSWORD = "PrincessWay2526"
 
-# Session state for authentication
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -152,8 +151,7 @@ if st.session_state.authenticated:
         @st.cache_data
         def load_ti_data():
             base_path = os.path.dirname(__file__)
-            df_ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
-            return df_ti
+            return pd.read_excel(os.path.join(base_path, "TI.xlsx"))
 
         ti = load_ti_data()
         ti["location"] = ti["location"].apply(parse_location)
@@ -165,11 +163,11 @@ if st.session_state.authenticated:
         shots = ti[ti["type.name"] == "Shot"].copy()
         throwins = passes[passes["possession"].isin(shots["possession"])]
 
-        pitch = Pitch(half=True, pitch_type='statsbomb', pitch_color='white', line_color='black')
-        fig, ax = pitch.draw(figsize=(10, 6))
+        pitch = Pitch(pitch_type='statsbomb', half=True, orientation='vertical', pitch_color='white', line_color='black')
+        fig, ax = pitch.draw(figsize=(6, 10))
         pitch.arrows(throwins["location_x"], throwins["location_y"],
                      throwins["pass.end_location_x"], throwins["pass.end_location_y"],
-                     width=2, headwidth=4, color="dodgerblue", ax=ax)
+                     width=2, headwidth=4, color="dodgerblue", ax=ax, alpha=0.8)
         st.pyplot(fig)
 
     # -------------------- Download --------------------
