@@ -3,12 +3,11 @@ import pandas as pd
 import os
 import ast
 import plotly.graph_objects as go
-from mplsoccer import Pitch
+from mplsoccer import VerticalPitch
 import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
-
 PASSWORD = "PrincessWay2526"
 
 if "authenticated" not in st.session_state:
@@ -55,28 +54,26 @@ if st.session_state.authenticated:
     df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
     df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
-    # -------------------- Filters --------------------
     with st.sidebar:
         st.header("Filters")
         col1, col2 = st.columns(2)
-
         with col1:
-            filters = {}
-            filters["Set Piece Type"] = st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist())
-            filters["Team"] = st.selectbox("Team", ["All"] + df["team.name"].dropna().unique().tolist())
-            filters["Position"] = st.selectbox("Position", ["All"] + df["position.name"].dropna().unique().tolist())
-            filters["Nation"] = st.selectbox("Nation", ["All"] + df["competition.country_name"].dropna().unique().tolist())
-
+            filters = {
+                "Set Piece Type": st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist()),
+                "Team": st.selectbox("Team", ["All"] + df["team.name"].dropna().unique().tolist()),
+                "Position": st.selectbox("Position", ["All"] + df["position.name"].dropna().unique().tolist()),
+                "Nation": st.selectbox("Nation", ["All"] + df["competition.country_name"].dropna().unique().tolist())
+            }
         with col2:
-            filters["Match"] = st.selectbox("Match", ["All"] + df["Match"].dropna().unique().tolist())
-            filters["Body Part"] = st.selectbox("Body Part", ["All"] + df["shot.body_part.name"].dropna().unique().tolist())
-            filters["League"] = st.selectbox("League", ["All"] + df["competition.competition_name"].dropna().unique().tolist())
-            filters["Season"] = st.selectbox("Season", ["All"] + df["season.season_name"].dropna().unique().tolist())
-
+            filters.update({
+                "Match": st.selectbox("Match", ["All"] + df["Match"].dropna().unique().tolist()),
+                "Body Part": st.selectbox("Body Part", ["All"] + df["shot.body_part.name"].dropna().unique().tolist()),
+                "League": st.selectbox("League", ["All"] + df["competition.competition_name"].dropna().unique().tolist()),
+                "Season": st.selectbox("Season", ["All"] + df["season.season_name"].dropna().unique().tolist())
+            })
         filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "True", "False"])
         xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01)
 
-    # -------------------- Apply Filters --------------------
     filtered = df_goals.copy()
     for key, col in [
         ("Set Piece Type", "play_pattern.name"),
@@ -98,7 +95,6 @@ if st.session_state.authenticated:
         st.warning("No goals found for this filter.")
         st.stop()
 
-    # -------------------- Tabs --------------------
     tab1, tab2, tab3, tab4 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test", "🌀 Throw ins"])
 
     with tab1:
@@ -131,7 +127,6 @@ if st.session_state.authenticated:
         fig.update_layout(shapes=shapes)
         st.plotly_chart(fig, use_container_width=True)
 
-        # KPIs below
         st.subheader("📊 Summary Stats")
         col1, col2, col3 = st.columns(3)
         col1.metric("Filtered Goals", len(filtered))
@@ -151,33 +146,42 @@ if st.session_state.authenticated:
         @st.cache_data
         def load_ti_data():
             base_path = os.path.dirname(__file__)
-            return pd.read_excel(os.path.join(base_path, "TI.xlsx"))
+            df_ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
+            return df_ti
+
+        def ensure_two(loc):
+            try:
+                loc = ast.literal_eval(loc) if isinstance(loc, str) else loc
+                if not isinstance(loc, (list, tuple)):
+                    return [None, None]
+                return (loc + [None, None])[:2]
+            except:
+                return [None, None]
 
         ti = load_ti_data()
         ti["location"] = ti["location"].apply(parse_location)
         ti[["location_x", "location_y", "location_z"]] = pd.DataFrame(ti["location"].tolist(), index=ti.index)
-        ti["pass.end_location"] = ti["pass.end_location"].apply(parse_location)
-        ti[["pass.end_location_x", "pass.end_location_y", "pass.end_location_z"]] = pd.DataFrame(ti["pass.end_location"].tolist(), index=ti.index)
+
+        ti["pass.end_location"] = ti["pass.end_location"].apply(ensure_two)
+        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["pass.end_location"].tolist(), index=ti.index)
 
         passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
         shots = ti[ti["type.name"] == "Shot"].copy()
         throwins = passes[passes["possession"].isin(shots["possession"])]
 
-        pitch = Pitch(pitch_type='statsbomb', half=True, orientation='vertical', pitch_color='white', line_color='black')
-        fig, ax = pitch.draw(figsize=(6, 10))
+        pitch = VerticalPitch(half=True, pitch_type='statsbomb', pitch_color='white', line_color='black')
+        fig, ax = pitch.draw(figsize=(6, 8))
         pitch.arrows(throwins["location_x"], throwins["location_y"],
                      throwins["pass.end_location_x"], throwins["pass.end_location_y"],
-                     width=2, headwidth=4, color="dodgerblue", ax=ax, alpha=0.8)
+                     width=2, headwidth=4, color="dodgerblue", ax=ax)
         st.pyplot(fig)
 
-    # -------------------- Download --------------------
     st.download_button(
         label="⬇️ Download Filtered Data",
         data=filtered.to_csv(index=False),
         file_name="filtered_goals.csv"
     )
 
-    # -------------------- Styling --------------------
     st.markdown(f"""
         <style>
             .main {{
