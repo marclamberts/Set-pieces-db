@@ -5,4 +5,3 @@ openpyxl
 mplsoccer
 matplotlib
 plotly
-experimental_rerun
