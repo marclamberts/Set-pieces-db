@@ -118,15 +118,15 @@ if st.session_state.authenticated:
         fig.update_layout(
             plot_bgcolor='white',
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),  # Y axis bottom to top
+            yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
             height=600,
             title=""
         )
 
-        # Add scatter plot
+        # Add scatter plot with Match in hover text
         fig.add_trace(go.Scatter(
-            x=filtered["location_y"],  # X axis normal (not reversed)
-            y=filtered["location_x"],  # Y axis bottom to top
+            x=filtered["location_y"],
+            y=filtered["location_x"],
             mode='markers',
             marker=dict(
                 size=filtered["shot.statsbomb_xg"] * 40 + 6,
@@ -134,11 +134,18 @@ if st.session_state.authenticated:
                 line=dict(width=1, color='black'),
                 opacity=0.8
             ),
-            text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>Player: {row.get('player.name', 'N/A')}<br>Body Part: {row['shot.body_part.name']}<br>xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
+            text=filtered.apply(
+                lambda row: (
+                    f"Team: {row['team.name']}<br>"
+                    f"Match: {row['Match']}<br>"
+                    f"Player: {row.get('player.name', 'N/A')}<br>"
+                    f"Body Part: {row['shot.body_part.name']}<br>"
+                    f"xG: {row['shot.statsbomb_xg']:.2f}"
+                ), axis=1),
             hoverinfo='text'
         ))
 
-        # Half-pitch layout (y from 60 to 120)
+        # Half-pitch layout
         shapes = [
             dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
             dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),  # 18-yard box
