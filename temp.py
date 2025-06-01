@@ -17,8 +17,7 @@ if not st.session_state.authenticated:
     password = st.text_input("Enter password to continue:", type="password")
     if password == PASSWORD:
         st.session_state.authenticated = True
-        st.experimental_rerun = lambda: None  # Disable experimental rerun if still causes issues
-        st.write("Access granted! Please interact with the app to continue.")
+        st.experimental_rerun()
     else:
         st.stop()
 
@@ -132,12 +131,11 @@ if st.session_state.authenticated:
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False, autorange="reversed"),
             height=600,
-            title="Goals from Set Pieces (Goal at Top)"
+            title="Goals from Set Pieces (Goal at Top, Mirrored X)"
         )
 
-        # Add scatter plot
         fig.add_trace(go.Scatter(
-            x=filtered["location_y"],
+            x=80 - filtered["location_y"],  # MIRRORED X axis
             y=filtered["location_x"],
             mode='markers',
             marker=dict(
@@ -150,12 +148,12 @@ if st.session_state.authenticated:
             hoverinfo='text'
         ))
 
-        # Half-pitch layout
+        # Half-pitch layout shapes
         shapes = [
             dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
-            dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),  # 18-yard
-            dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),  # 6-yard
-            dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))  # center line
+            dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),
+            dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),
+            dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))
         ]
         fig.update_layout(shapes=shapes)
 
