@@ -23,8 +23,6 @@ if not st.session_state.authenticated:
 
 if st.session_state.authenticated:
 
-    st.title("Goals from Set Pieces")
-
     ECONOMIST_COLORS = {
         "background": "#f5f5f5",
         "primary": "#3d6e70",
