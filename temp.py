@@ -28,14 +28,21 @@ def load_data():
 
 df = load_data()
 
-# Parse location
+# Parse location into a separate DataFrame to avoid fragmentation warning
 def parse_location(loc):
     try:
         return ast.literal_eval(loc) if isinstance(loc, str) else loc
     except:
         return [None, None, None]
 
-df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
+location_df = df['location'].apply(parse_location).apply(pd.Series)
+location_df.columns = ['location_x', 'location_y', 'location_z']
+
+# Concatenate parsed location columns all at once
+df = pd.concat([df, location_df], axis=1)
+
+# Optionally defragment if needed (uncomment if warning persists)
+# df = df.copy()
 
 # Check required columns
 required_cols = {
@@ -48,7 +55,7 @@ if missing := (required_cols - set(df.columns)):
     st.error(f"Missing columns: {missing}")
     st.stop()
 
-# Filter for shots
+# Filter for shots with valid location and xG
 df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
 df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
@@ -123,7 +130,7 @@ y = filtered["location_x"] - 60
 
 hover_texts = [
     f"<b>{row['team.name']}</b> vs {row['Match']}<br>"
-    f"{row['shot.statsbomb_xg']:.2f}<br>"  # Removed "xG:" label here
+    f"{row['shot.statsbomb_xg']:.2f}<br>"  # No 'xG:' label here
     f"Body: {row['shot.body_part.name']}<br>"
     f"Position: {row['position.name']}"
     for _, row in filtered.iterrows()
