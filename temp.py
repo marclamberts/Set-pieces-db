@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import os
-import plotly.graph_objects as go
 import plotly.express as px
 import ast
+import matplotlib.pyplot as plt
+from mplsoccer import Pitch
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -42,7 +43,10 @@ def parse_location(loc):
     except:
         return [None, None, None]
 
-df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
+# ---- FIX fragmentation warning here ----
+parsed_locs = df['location'].apply(parse_location)
+loc_df = pd.DataFrame(parsed_locs.tolist(), columns=['location_x', 'location_y', 'location_z'])
+df = pd.concat([df, loc_df], axis=1).copy()
 
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
@@ -101,16 +105,25 @@ if filtered.empty:
     st.stop()
 
 # -------------------- KPIs --------------------
-st.subheader("\U0001F4CA Summary Stats")
+st.subheader("📊 Summary Stats")
 col1, col2, col3 = st.columns(3)
 col1.metric("Filtered Goals", len(filtered))
 col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
 col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
-# -------------------- Visuals --------------------
-tab1, tab2, tab3, tab4 = st.tabs(["\U0001F3AF Goal Map", "\U0001F321 Heatmap", "\U0001F4C8 Breakdown", "\U0001F4CB Data"])
+# -------------------- Tabs --------------------
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎯 mplsoccer Pitch", "📈 Scatter", "🔥 Heatmap", "📊 Breakdown", "📋 Data"])
 
+# ---- mplsoccer Pitch ----
 with tab1:
+    st.subheader("Goal Locations on Pitch")
+    pitch = Pitch(pitch_type='statsbomb', line_color='black', pitch_color='white')
+    fig, ax = pitch.draw(figsize=(10, 6))
+    pitch.scatter(filtered["location_x"], filtered["location_y"], ax=ax, color=ECONOMIST_COLORS["secondary"], s=100, edgecolors="black")
+    st.pyplot(fig)
+
+# ---- Plotly Scatter ----
+with tab2:
     fig = px.scatter(
         filtered,
         x="location_y", y=filtered["location_x"] - 60,
@@ -122,7 +135,8 @@ with tab1:
     fig.update_layout(yaxis=dict(range=[0, 60]), xaxis=dict(range=[0, 80]), height=600)
     st.plotly_chart(fig, use_container_width=True)
 
-with tab2:
+# ---- Heatmap ----
+with tab3:
     heatmap_fig = px.density_heatmap(
         filtered, x="location_y", y="location_x",
         nbinsx=50, nbinsy=50,
@@ -132,19 +146,22 @@ with tab2:
     heatmap_fig.update_layout(yaxis=dict(autorange="reversed"))
     st.plotly_chart(heatmap_fig, use_container_width=True)
 
-with tab3:
+# ---- Breakdown ----
+with tab4:
     st.subheader("Top Scoring Teams")
     st.bar_chart(filtered["team.name"].value_counts().head(10))
+
     if "player.name" in filtered.columns:
         st.subheader("Top Scoring Players")
         st.bar_chart(filtered["player.name"].value_counts().head(10))
 
-with tab4:
+# ---- Data Table ----
+with tab5:
     st.dataframe(filtered)
 
 # -------------------- Download --------------------
 st.download_button(
-    label="\U0001F4E5 Download Filtered Data",
+    label="⬇️ Download Filtered Data",
     data=filtered.to_csv(index=False),
     file_name="filtered_goals.csv"
 )
