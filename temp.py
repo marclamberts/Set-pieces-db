@@ -123,8 +123,6 @@ if st.session_state.authenticated:
     tab1, tab2, tab3 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test"])
 
     with tab1:
-        st.subheader("Set Piece Goal Locations")
-
         fig = go.Figure()
 
         fig.update_layout(
@@ -132,7 +130,7 @@ if st.session_state.authenticated:
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),  # Y axis: bottom to top
             height=600,
-            title="Goals from Set Pieces (Goal at Bottom)"
+            title=""
         )
 
         # Add scatter plot
