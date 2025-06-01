@@ -7,6 +7,14 @@ import ast
 st.set_page_config(page_title="Advanced Goal Map", layout="wide")
 st.title("⚽ Advanced Set Piece Goal Analysis")
 
+# Apply Economist-style colors
+ECONOMIST_COLORS = {
+    "background": "#f5f5f5",
+    "primary": "#3d6e70",
+    "secondary": "#e3120b",
+    "text": "#121212"
+}
+
 # Load data
 @st.cache_data
 def load_data():
@@ -44,8 +52,19 @@ if missing := (required_cols - set(df.columns)):
 df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
 df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
-# Sidebar filters
+# Sidebar filters with Economist styling
 with st.sidebar:
+    st.markdown(f"""
+        <style>
+            .sidebar .sidebar-content {{
+                background-color: {ECONOMIST_COLORS['background']};
+            }}
+            .stSelectbox, .stSlider {{
+                margin-bottom: 1rem;
+            }}
+        </style>
+    """, unsafe_allow_html=True)
+    
     st.header("🎯 Filters")
     filters = {
         "Set Piece Type": st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist()),
@@ -84,38 +103,50 @@ if filters["First-Time"] != "All":
 
 filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
 
-# Show summary stats
+# Show summary stats with Economist colors
 st.sidebar.markdown("----")
-st.sidebar.metric("Total Goals", len(filtered))
-st.sidebar.metric("Avg. xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
+st.sidebar.markdown(f"""
+    <div style="color: {ECONOMIST_COLORS['primary']}; font-weight: bold;">
+        <p>Total Goals: {len(filtered)}</p>
+        <p>Avg. xG: {round(filtered['shot.statsbomb_xg'].mean(), 3)}</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # Exit early if no data
 if filtered.empty:
     st.warning("No goals found for this filter.")
     st.stop()
 
-# Pitch plot
+# Pitch plot with Economist styling
 x = filtered["location_y"]
 y = filtered["location_x"] - 60
 
 hover_texts = [
-    f"{row['team.name']} vs {row['Match']}<br>xG: {row['shot.statsbomb_xg']:.2f}<br>Body: {row['shot.body_part.name']}"
+    f"<b>{row['team.name']}</b> vs {row['Match']}<br>"
+    f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
+    f"Body: {row['shot.body_part.name']}<br>"
+    f"Position: {row['position.name']}"
     for _, row in filtered.iterrows()
 ]
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(
     x=x, y=y,
-    mode='markers+text',
-    marker=dict(size=10, color='#1E90FF', line=dict(color='white', width=1.2)),
-    text=filtered["shot.statsbomb_xg"].round(2).astype(str),
+    mode='markers',
+    marker=dict(
+        size=12,
+        color=ECONOMIST_COLORS['secondary'],
+        line=dict(color='white', width=1.5),
+        opacity=0.8
+    ),
     hovertext=hover_texts,
     hoverinfo="text"
 ))
 
 # Pitch shapes (simplified)
 fig.update_layout(
-    title=f"🗺️ Goal Map: {filters['Set Piece Type']}",
+    title=f"<b>Goal Map: {filters['Set Piece Type']}</b>",
+    title_font=dict(size=20, color=ECONOMIST_COLORS['text']),
     xaxis=dict(range=[0, 80], visible=False),
     yaxis=dict(range=[0, 60], visible=False, scaleanchor="x"),
     shapes=[
@@ -123,27 +154,60 @@ fig.update_layout(
         dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="gray", width=1)),
     ],
     height=600,
-    plot_bgcolor="#f9f9f9",
-    paper_bgcolor="#f9f9f9"
+    plot_bgcolor=ECONOMIST_COLORS['background'],
+    paper_bgcolor=ECONOMIST_COLORS['background'],
+    hoverlabel=dict(
+        bgcolor="white",
+        font_size=12,
+        font_family="Arial"
+    )
 )
 
-# Display output
-tab1, tab2, tab3 = st.tabs(["📊 Goal Map", "📋 Data Table", "📈 xG Histogram"])
+# Display output with two tabs
+tab1, tab2 = st.tabs(["📊 Goal Map", "📋 Data Table"])
 
 with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.dataframe(filtered[[
-        "team.name", "Match", "play_pattern.name", "position.name",
-        "shot.body_part.name", "shot.first_time", "shot.statsbomb_xg",
-        "competition.country_name", "competition.competition_name", "season.season_name"
-    ]])
+    # Style the dataframe with Economist colors
+    st.dataframe(
+        filtered[[
+            "team.name", "Match", "play_pattern.name", "position.name",
+            "shot.body_part.name", "shot.first_time", "shot.statsbomb_xg",
+            "competition.country_name", "competition.competition_name", "season.season_name"
+        ]].style.apply(lambda x: [
+            f"background-color: {ECONOMIST_COLORS['background']}; color: {ECONOMIST_COLORS['text']}"
+            for _ in x
+        ], axis=1)
+    )
 
-with tab3:
-    st.subheader("xG Distribution")
-    st.bar_chart(filtered["shot.statsbomb_xg"].value_counts().sort_index())
+# Optional export button with Economist styling
+st.download_button(
+    label="📥 Download Filtered Data",
+    data=filtered.to_csv(index=False),
+    file_name="filtered_goals.csv",
+    help="Download the filtered data as a CSV file"
+)
 
-# Optional export
-st.download_button("📥 Download Filtered Data", filtered.to_csv(index=False), file_name="filtered_goals.csv")
-
+# Apply global styling
+st.markdown(f"""
+    <style>
+        .main {{
+            background-color: {ECONOMIST_COLORS['background']};
+        }}
+        .stButton>button {{
+            background-color: {ECONOMIST_COLORS['primary']};
+            color: white;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+        }}
+        .stButton>button:hover {{
+            background-color: {ECONOMIST_COLORS['secondary']};
+            color: white;
+        }}
+        .stDataFrame {{
+            font-family: Arial, sans-serif;
+        }}
+    </style>
+""", unsafe_allow_html=True)
