@@ -14,7 +14,7 @@ password_input = st.text_input("Enter password to continue:", type="password")
 if password_input != PASSWORD:
     st.stop()
 
-st.title(" Goals from Set Pieces")
+st.title("Goals from Set Pieces")
 
 ECONOMIST_COLORS = {
     "background": "#f5f5f5",
