@@ -2,12 +2,20 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.graph_objects as go
+import plotly.express as px
 import ast
 
-st.set_page_config(page_title="Database", layout="wide")
-st.title("Goals from set pieces")
+# -------------------- Config --------------------
+st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
-# Economist-style colors
+# Password Gate
+PASSWORD = "admin123"
+password_input = st.text_input("Enter password to continue:", type="password")
+if password_input != PASSWORD:
+    st.stop()
+
+st.title("\U0001F3C0 Goals from Set Pieces")
+
 ECONOMIST_COLORS = {
     "background": "#f5f5f5",
     "primary": "#3d6e70",
@@ -15,7 +23,7 @@ ECONOMIST_COLORS = {
     "text": "#121212"
 }
 
-# Load data
+# -------------------- Load Data --------------------
 @st.cache_data
 def load_data():
     base_path = os.path.dirname(__file__)
@@ -28,7 +36,6 @@ def load_data():
 
 df = load_data()
 
-# Parse location
 def parse_location(loc):
     try:
         return ast.literal_eval(loc) if isinstance(loc, str) else loc
@@ -37,7 +44,6 @@ def parse_location(loc):
 
 df[['location_x', 'location_y', 'location_z']] = df['location'].apply(parse_location).apply(pd.Series)
 
-# Required columns check
 required_cols = {
     "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
     "team.name", "position.name", "shot.statsbomb_xg", "Match",
@@ -48,22 +54,12 @@ if missing := (required_cols - set(df.columns)):
     st.error(f"Missing columns: {missing}")
     st.stop()
 
-# Filter shots
 df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
 df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
-# Sidebar filters with two columns
+# -------------------- Filters --------------------
 with st.sidebar:
-    st.markdown(f"""
-        <style>
-            .sidebar .sidebar-content {{
-                background-color: {ECONOMIST_COLORS['background']};
-            }}
-        </style>
-    """, unsafe_allow_html=True)
-
     st.header("Filters")
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -82,114 +78,78 @@ with st.sidebar:
     filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "True", "False"])
     xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01)
 
-    st.markdown("----")
-    st.markdown(f"""
-        <div style="color: {ECONOMIST_COLORS['primary']}; font-weight: bold;">
-            <p>Total Goals: {len(df_goals)}</p>
-            <p>Avg. xG: {round(df_goals['shot.statsbomb_xg'].mean(), 3)}</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-# Apply filters
+# -------------------- Apply Filters --------------------
 filtered = df_goals.copy()
-if filters["Set Piece Type"] != "All":
-    filtered = filtered[filtered["play_pattern.name"] == filters["Set Piece Type"]]
-if filters["Team"] != "All":
-    filtered = filtered[filtered["team.name"] == filters["Team"]]
-if filters["Match"] != "All":
-    filtered = filtered[filtered["Match"] == filters["Match"]]
-if filters["Position"] != "All":
-    filtered = filtered[filtered["position.name"] == filters["Position"]]
-if filters["Body Part"] != "All":
-    filtered = filtered[filtered["shot.body_part.name"] == filters["Body Part"]]
-if filters["Nation"] != "All":
-    filtered = filtered[filtered["competition.country_name"] == filters["Nation"]]
-if filters["League"] != "All":
-    filtered = filtered[filtered["competition.competition_name"] == filters["League"]]
-if filters["Season"] != "All":
-    filtered = filtered[filtered["season.season_name"] == filters["Season"]]
+for key, col in [
+    ("Set Piece Type", "play_pattern.name"),
+    ("Team", "team.name"),
+    ("Match", "Match"),
+    ("Position", "position.name"),
+    ("Body Part", "shot.body_part.name"),
+    ("Nation", "competition.country_name"),
+    ("League", "competition.competition_name"),
+    ("Season", "season.season_name")
+]:
+    if filters[key] != "All":
+        filtered = filtered[filtered[col] == filters[key]]
 if filters["First-Time"] != "All":
-    is_ft = filters["First-Time"] == "True"
-    filtered = filtered[filtered["shot.first_time"] == is_ft]
-
+    filtered = filtered[filtered["shot.first_time"] == (filters["First-Time"] == "True")]
 filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
 
 if filtered.empty:
     st.warning("No goals found for this filter.")
     st.stop()
 
-# Create goal map
-x = filtered["location_y"]
-y = filtered["location_x"] - 60
+# -------------------- KPIs --------------------
+st.subheader("\U0001F4CA Summary Stats")
+col1, col2, col3 = st.columns(3)
+col1.metric("Filtered Goals", len(filtered))
+col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
+col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
-hover_texts = [
-    f"<b>{row['team.name']}</b> vs {row['Match']}<br>"
-    f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
-    f"Body: {row['shot.body_part.name']}<br>"
-    f"Position: {row['position.name']}"
-    for _, row in filtered.iterrows()
-]
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(
-    x=x, y=y,
-    mode='markers',
-    marker=dict(
-        size=12,
-        color=ECONOMIST_COLORS['secondary'],
-        line=dict(color='white', width=1.5),
-        opacity=0.8
-    ),
-    hovertext=hover_texts,
-    hoverinfo="text"
-))
-
-fig.update_layout(
-    title=f"<b>Goal Map: {filters['Set Piece Type']}</b>",
-    title_font=dict(size=20, color=ECONOMIST_COLORS['text']),
-    xaxis=dict(range=[0, 80], visible=False),
-    yaxis=dict(range=[0, 60], visible=False, scaleanchor="x"),
-    shapes=[
-        dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="#000", width=2)),
-        dict(type="rect", x0=18, y0=42, x1=62, y1=60, line=dict(color="gray", width=1)),
-    ],
-    height=600,
-    plot_bgcolor=ECONOMIST_COLORS['background'],
-    paper_bgcolor=ECONOMIST_COLORS['background'],
-    hoverlabel=dict(
-        bgcolor="white",
-        font_size=12,
-        font_family="Arial"
-    )
-)
-
-# Show tabs (goal map and data)
-tab1, tab2 = st.tabs(["📊 Goal Map", "📋 Data Table"])
+# -------------------- Visuals --------------------
+tab1, tab2, tab3, tab4 = st.tabs(["\U0001F3AF Goal Map", "\U0001F321 Heatmap", "\U0001F4C8 Breakdown", "\U0001F4CB Data"])
 
 with tab1:
+    fig = px.scatter(
+        filtered,
+        x="location_y", y=filtered["location_x"] - 60,
+        color="shot.body_part.name",
+        hover_name="team.name",
+        size="shot.statsbomb_xg",
+        title="Goal Map by Body Part"
+    )
+    fig.update_layout(yaxis=dict(range=[0, 60]), xaxis=dict(range=[0, 80]), height=600)
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.dataframe(
-        filtered[[
-            "team.name", "Match", "play_pattern.name", "position.name",
-            "shot.body_part.name", "shot.first_time", "shot.statsbomb_xg",
-            "competition.country_name", "competition.competition_name", "season.season_name"
-        ]].style.apply(lambda x: [
-            f"background-color: {ECONOMIST_COLORS['background']}; color: {ECONOMIST_COLORS['text']}"
-            for _ in x
-        ], axis=1)
+    heatmap_fig = px.density_heatmap(
+        filtered, x="location_y", y="location_x",
+        nbinsx=50, nbinsy=50,
+        color_continuous_scale="Reds",
+        title="Goal Density from Set Pieces"
     )
+    heatmap_fig.update_layout(yaxis=dict(autorange="reversed"))
+    st.plotly_chart(heatmap_fig, use_container_width=True)
 
-# Export filtered data
+with tab3:
+    st.subheader("Top Scoring Teams")
+    st.bar_chart(filtered["team.name"].value_counts().head(10))
+    if "player.name" in filtered.columns:
+        st.subheader("Top Scoring Players")
+        st.bar_chart(filtered["player.name"].value_counts().head(10))
+
+with tab4:
+    st.dataframe(filtered)
+
+# -------------------- Download --------------------
 st.download_button(
-    label="📥 Download Filtered Data",
+    label="\U0001F4E5 Download Filtered Data",
     data=filtered.to_csv(index=False),
-    file_name="filtered_goals.csv",
-    help="Download the filtered data as a CSV file"
+    file_name="filtered_goals.csv"
 )
 
-# Global style
+# -------------------- Styling --------------------
 st.markdown(f"""
     <style>
         .main {{
@@ -199,11 +159,9 @@ st.markdown(f"""
             background-color: {ECONOMIST_COLORS['primary']};
             color: white;
             border-radius: 4px;
-            padding: 0.5rem 1rem;
         }}
         .stButton>button:hover {{
             background-color: {ECONOMIST_COLORS['secondary']};
-            color: white;
         }}
         .stDataFrame {{
             font-family: Arial, sans-serif;
