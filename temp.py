@@ -9,12 +9,12 @@ import ast
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
 # Password Gate
-PASSWORD = "admin123"
+PASSWORD = "PrincessWay2526"
 password_input = st.text_input("Enter password to continue:", type="password")
 if password_input != PASSWORD:
     st.stop()
 
-st.title("\U0001F3C0 Goals from Set Pieces")
+st.title(" Goals from Set Pieces")
 
 ECONOMIST_COLORS = {
     "background": "#f5f5f5",
