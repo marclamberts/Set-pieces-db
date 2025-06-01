@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 import ast
-import plotly.express as px
 import plotly.graph_objects as go
 
 # -------------------- Config --------------------
@@ -109,49 +108,50 @@ col1.metric("Filtered Goals", len(filtered))
 col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
 col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
-# -------------------- PITCH SCATTER (Plotly) --------------------
-st.subheader("🎯 Set Piece Goal Map")
+# -------------------- Tabs --------------------
+tab1, tab2 = st.tabs(["🎯 Goal Map", "📋 Data Table"])
 
-fig = go.Figure()
+with tab1:
+    st.subheader("Set Piece Goal Locations")
 
-# Pitch outline (StatsBomb 120x80 half pitch)
-fig.update_layout(
-    plot_bgcolor='white',
-    xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-    yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
-    height=600,
-    title="Goals from Set Pieces (Hover for details)"
-)
+    fig = go.Figure()
 
-# Add goal dots
-fig.add_trace(go.Scatter(
-    x=filtered["location_y"],
-    y=filtered["location_x"],
-    mode='markers',
-    marker=dict(
-        size=filtered["shot.statsbomb_xg"] * 40 + 6,
-        color='crimson',
-        line=dict(width=1, color='black'),
-        opacity=0.8
-    ),
-    text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>xG: {row['shot.statsbomb_xg']:.2f}<br>Player: {row.get('player.name', 'N/A')}", axis=1),
-    hoverinfo='text'
-))
+    fig.update_layout(
+        plot_bgcolor='white',
+        xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False, autorange="reversed"),
+        height=600,
+        title="Goals from Set Pieces (Goal at Top)"
+    )
 
-# Draw half pitch manually (box, penalty area, goal)
-shapes = [
-    dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),  # outer box
-    dict(type='rect', x0=18, x1=62, y0=60, y1=84, line=dict(color='black')),  # 18-yard box
-    dict(type='rect', x0=30, x1=50, y0=60, y1=66, line=dict(color='black')),  # 6-yard box
-    dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))  # center line
-]
-fig.update_layout(shapes=shapes)
+    # Add scatter plot
+    fig.add_trace(go.Scatter(
+        x=filtered["location_y"],
+        y=filtered["location_x"],
+        mode='markers',
+        marker=dict(
+            size=filtered["shot.statsbomb_xg"] * 40 + 6,
+            color='crimson',
+            line=dict(width=1, color='black'),
+            opacity=0.8
+        ),
+        text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>Player: {row.get('player.name', 'N/A')}<br>Body Part: {row['shot.body_part.name']}<br>xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
+        hoverinfo='text'
+    ))
 
-st.plotly_chart(fig, use_container_width=True)
+    # Half-pitch layout
+    shapes = [
+        dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
+        dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),  # 18-yard
+        dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),  # 6-yard
+        dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))  # center line
+    ]
+    fig.update_layout(shapes=shapes)
 
-# -------------------- Data Table --------------------
-st.subheader("📋 Filtered Data")
-st.dataframe(filtered)
+    st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    st.dataframe(filtered)
 
 # -------------------- Download --------------------
 st.download_button(
