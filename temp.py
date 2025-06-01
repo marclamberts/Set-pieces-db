@@ -17,7 +17,8 @@ if not st.session_state.authenticated:
     password = st.text_input("Enter password to continue:", type="password")
     if password == PASSWORD:
         st.session_state.authenticated = True
-        st.experimental_rerun()
+        st.experimental_rerun = lambda: None  # Disable experimental rerun if still causes issues
+        st.write("Access granted! Please interact with the app to continue.")
     else:
         st.stop()
 
@@ -120,10 +121,9 @@ if st.session_state.authenticated:
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
             height=600,
-            title=""
         )
 
-        # Add scatter plot with Match in hover text
+        # Add scatter plot with hover info including match and body part
         fig.add_trace(go.Scatter(
             x=filtered["location_y"],
             y=filtered["location_x"],
@@ -134,18 +134,16 @@ if st.session_state.authenticated:
                 line=dict(width=1, color='black'),
                 opacity=0.8
             ),
-            text=filtered.apply(
-                lambda row: (
-                    f"Team: {row['team.name']}<br>"
-                    f"Match: {row['Match']}<br>"
-                    f"Player: {row.get('player.name', 'N/A')}<br>"
-                    f"Body Part: {row['shot.body_part.name']}<br>"
-                    f"xG: {row['shot.statsbomb_xg']:.2f}"
-                ), axis=1),
+            text=filtered.apply(lambda row:
+                f"Team: {row['team.name']}<br>"
+                f"Player: {row.get('player.name', 'N/A')}<br>"
+                f"Body Part: {row['shot.body_part.name']}<br>"
+                f"Match: {row['Match']}<br>"
+                f"xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
             hoverinfo='text'
         ))
 
-        # Half-pitch layout
+        # Half-pitch layout (bottom-to-top)
         shapes = [
             dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
             dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),  # 18-yard box
@@ -156,7 +154,7 @@ if st.session_state.authenticated:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Summary stats under the pitch
+        # Summary Stats under pitch
         st.subheader("📊 Summary Stats")
         col1, col2, col3 = st.columns(3)
         col1.metric("Filtered Goals", len(filtered))
@@ -168,6 +166,23 @@ if st.session_state.authenticated:
 
     with tab3:
         st.write("This is the test tab! You can put anything here.")
+        
+        fig_xg_hist = go.Figure()
+        fig_xg_hist.add_trace(go.Histogram(
+            x=filtered["shot.statsbomb_xg"],
+            nbinsx=30,
+            marker_color='crimson',
+            opacity=0.75
+        ))
+        fig_xg_hist.update_layout(
+            title="xG Distribution of Filtered Goals",
+            xaxis_title="Expected Goals (xG)",
+            yaxis_title="Count",
+            bargap=0.1,
+            plot_bgcolor='white',
+            height=400
+        )
+        st.plotly_chart(fig_xg_hist, use_container_width=True)
 
     # -------------------- Download --------------------
     st.download_button(
