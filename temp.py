@@ -17,8 +17,7 @@ if not st.session_state.authenticated:
     password = st.text_input("Enter password to continue:", type="password")
     if password == PASSWORD:
         st.session_state.authenticated = True
-        st.experimental_rerun = lambda: None  # Disable experimental rerun if still causes issues
-        st.write("Access granted! Please interact with the app to continue.")
+        st.experimental_rerun()
     else:
         st.stop()
 
@@ -112,13 +111,6 @@ if st.session_state.authenticated:
         st.warning("No goals found for this filter.")
         st.stop()
 
-    # -------------------- KPIs --------------------
-    st.subheader("📊 Summary Stats")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Filtered Goals", len(filtered))
-    col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
-    col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
-
     # -------------------- Tabs --------------------
     tab1, tab2, tab3 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test"])
 
@@ -128,7 +120,7 @@ if st.session_state.authenticated:
         fig.update_layout(
             plot_bgcolor='white',
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),  # Y axis: bottom to top
+            yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),  # Y axis bottom to top
             height=600,
             title=""
         )
@@ -158,6 +150,13 @@ if st.session_state.authenticated:
         fig.update_layout(shapes=shapes)
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # Summary stats under the pitch
+        st.subheader("📊 Summary Stats")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Filtered Goals", len(filtered))
+        col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
+        col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
     with tab2:
         st.dataframe(filtered)
