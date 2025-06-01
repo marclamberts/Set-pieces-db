@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
-import plotly.express as px
 import ast
-import matplotlib.pyplot as plt
-from mplsoccer import Pitch
+import plotly.express as px
+import plotly.graph_objects as go
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -43,9 +42,8 @@ def parse_location(loc):
     except:
         return [None, None, None]
 
-# ---- FIX fragmentation warning here ----
-parsed_locs = df['location'].apply(parse_location)
-loc_df = pd.DataFrame(parsed_locs.tolist(), columns=['location_x', 'location_y', 'location_z'])
+loc_df = df['location'].apply(parse_location).apply(pd.Series)
+loc_df.columns = ['location_x', 'location_y', 'location_z']
 df = pd.concat([df, loc_df], axis=1).copy()
 
 required_cols = {
@@ -111,53 +109,49 @@ col1.metric("Filtered Goals", len(filtered))
 col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
 col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
-# -------------------- Tabs --------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎯 mplsoccer Pitch", "📈 Scatter", "🔥 Heatmap", "📊 Breakdown", "📋 Data"])
+# -------------------- PITCH SCATTER (Plotly) --------------------
+st.subheader("🎯 Set Piece Goal Map")
 
-# ---- mplsoccer Pitch ----
-with tab1:
-    st.subheader("Goal Locations on Pitch")
-    pitch = Pitch(pitch_type='statsbomb', line_color='black', pitch_color='white')
-    fig, ax = pitch.draw(figsize=(10, 6))
-    pitch.scatter(filtered["location_x"], filtered["location_y"], ax=ax, color=ECONOMIST_COLORS["secondary"], s=100, edgecolors="black")
-    st.pyplot(fig)
+fig = go.Figure()
 
-# ---- Plotly Scatter ----
-with tab2:
-    fig = px.scatter(
-        filtered,
-        x="location_y", y=filtered["location_x"] - 60,
-        color="shot.body_part.name",
-        hover_name="team.name",
-        size="shot.statsbomb_xg",
-        title="Goal Map by Body Part"
-    )
-    fig.update_layout(yaxis=dict(range=[0, 60]), xaxis=dict(range=[0, 80]), height=600)
-    st.plotly_chart(fig, use_container_width=True)
+# Pitch outline (StatsBomb 120x80 half pitch)
+fig.update_layout(
+    plot_bgcolor='white',
+    xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+    yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
+    height=600,
+    title="Goals from Set Pieces (Hover for details)"
+)
 
-# ---- Heatmap ----
-with tab3:
-    heatmap_fig = px.density_heatmap(
-        filtered, x="location_y", y="location_x",
-        nbinsx=50, nbinsy=50,
-        color_continuous_scale="Reds",
-        title="Goal Density from Set Pieces"
-    )
-    heatmap_fig.update_layout(yaxis=dict(autorange="reversed"))
-    st.plotly_chart(heatmap_fig, use_container_width=True)
+# Add goal dots
+fig.add_trace(go.Scatter(
+    x=filtered["location_y"],
+    y=filtered["location_x"],
+    mode='markers',
+    marker=dict(
+        size=filtered["shot.statsbomb_xg"] * 40 + 6,
+        color='crimson',
+        line=dict(width=1, color='black'),
+        opacity=0.8
+    ),
+    text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>xG: {row['shot.statsbomb_xg']:.2f}<br>Player: {row.get('player.name', 'N/A')}", axis=1),
+    hoverinfo='text'
+))
 
-# ---- Breakdown ----
-with tab4:
-    st.subheader("Top Scoring Teams")
-    st.bar_chart(filtered["team.name"].value_counts().head(10))
+# Draw half pitch manually (box, penalty area, goal)
+shapes = [
+    dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),  # outer box
+    dict(type='rect', x0=18, x1=62, y0=60, y1=84, line=dict(color='black')),  # 18-yard box
+    dict(type='rect', x0=30, x1=50, y0=60, y1=66, line=dict(color='black')),  # 6-yard box
+    dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))  # center line
+]
+fig.update_layout(shapes=shapes)
 
-    if "player.name" in filtered.columns:
-        st.subheader("Top Scoring Players")
-        st.bar_chart(filtered["player.name"].value_counts().head(10))
+st.plotly_chart(fig, use_container_width=True)
 
-# ---- Data Table ----
-with tab5:
-    st.dataframe(filtered)
+# -------------------- Data Table --------------------
+st.subheader("📋 Filtered Data")
+st.dataframe(filtered)
 
 # -------------------- Download --------------------
 st.download_button(
