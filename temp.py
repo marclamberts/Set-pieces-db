@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import ast
 import plotly.graph_objects as go
+from mplsoccer import Pitch
+import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -17,13 +19,11 @@ if not st.session_state.authenticated:
     password = st.text_input("Enter password to continue:", type="password")
     if password == PASSWORD:
         st.session_state.authenticated = True
-        st.experimental_rerun = lambda: None  # Disable experimental rerun if still causes issues
-        st.write("Access granted! Please interact with the app to continue.")
+        st.experimental_rerun()
     else:
         st.stop()
 
 if st.session_state.authenticated:
-
     ECONOMIST_COLORS = {
         "background": "#f5f5f5",
         "primary": "#3d6e70",
@@ -31,7 +31,6 @@ if st.session_state.authenticated:
         "text": "#121212"
     }
 
-    # -------------------- Load Data --------------------
     @st.cache_data
     def load_data():
         base_path = os.path.dirname(__file__)
@@ -53,16 +52,6 @@ if st.session_state.authenticated:
     loc_df = df['location'].apply(parse_location).apply(pd.Series)
     loc_df.columns = ['location_x', 'location_y', 'location_z']
     df = pd.concat([df, loc_df], axis=1).copy()
-
-    required_cols = {
-        "shot.outcome.name", "location_x", "location_y", "play_pattern.name",
-        "team.name", "position.name", "shot.statsbomb_xg", "Match",
-        "shot.first_time", "shot.body_part.name",
-        "competition.country_name", "competition.competition_name", "season.season_name"
-    }
-    if missing := (required_cols - set(df.columns)):
-        st.error(f"Missing columns: {missing}")
-        st.stop()
 
     df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
     df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
@@ -111,19 +100,16 @@ if st.session_state.authenticated:
         st.stop()
 
     # -------------------- Tabs --------------------
-    tab1, tab2, tab3 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test", "🌀 Throw ins"])
 
     with tab1:
         fig = go.Figure()
-
         fig.update_layout(
             plot_bgcolor='white',
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
-            height=600,
+            height=600
         )
-
-        # Add scatter plot with hover info including match and body part
         fig.add_trace(go.Scatter(
             x=filtered["location_y"],
             y=filtered["location_x"],
@@ -134,27 +120,19 @@ if st.session_state.authenticated:
                 line=dict(width=1, color='black'),
                 opacity=0.8
             ),
-            text=filtered.apply(lambda row:
-                f"Team: {row['team.name']}<br>"
-                f"Player: {row.get('player.name', 'N/A')}<br>"
-                f"Body Part: {row['shot.body_part.name']}<br>"
-                f"Match: {row['Match']}<br>"
-                f"xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
+            text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>Player: {row.get('player.name', 'N/A')}<br>Body Part: {row['shot.body_part.name']}<br>Match: {row['Match']}<br>xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
             hoverinfo='text'
         ))
-
-        # Half-pitch layout (bottom-to-top)
         shapes = [
             dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
-            dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),  # 18-yard box
-            dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),  # 6-yard box
-            dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))  # center line
+            dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),
+            dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),
+            dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))
         ]
         fig.update_layout(shapes=shapes)
-
         st.plotly_chart(fig, use_container_width=True)
 
-        # Summary Stats under pitch
+        # KPIs below
         st.subheader("📊 Summary Stats")
         col1, col2, col3 = st.columns(3)
         col1.metric("Filtered Goals", len(filtered))
@@ -165,24 +143,34 @@ if st.session_state.authenticated:
         st.dataframe(filtered)
 
     with tab3:
-        st.write("This is the test tab! You can put anything here.")
-        
-        fig_xg_hist = go.Figure()
-        fig_xg_hist.add_trace(go.Histogram(
-            x=filtered["shot.statsbomb_xg"],
-            nbinsx=30,
-            marker_color='crimson',
-            opacity=0.75
-        ))
-        fig_xg_hist.update_layout(
-            title="xG Distribution of Filtered Goals",
-            xaxis_title="Expected Goals (xG)",
-            yaxis_title="Count",
-            bargap=0.1,
-            plot_bgcolor='white',
-            height=400
-        )
-        st.plotly_chart(fig_xg_hist, use_container_width=True)
+        st.subheader("xG Distribution")
+        st.bar_chart(filtered["shot.statsbomb_xg"])
+
+    with tab4:
+        st.subheader("Throw-ins Leading to Shots")
+
+        @st.cache_data
+        def load_ti_data():
+            base_path = os.path.dirname(__file__)
+            df_ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
+            return df_ti
+
+        ti = load_ti_data()
+        ti["location"] = ti["location"].apply(parse_location)
+        ti[["location_x", "location_y", "location_z"]] = pd.DataFrame(ti["location"].tolist(), index=ti.index)
+        ti["pass.end_location"] = ti["pass.end_location"].apply(parse_location)
+        ti[["pass.end_location_x", "pass.end_location_y", "pass.end_location_z"]] = pd.DataFrame(ti["pass.end_location"].tolist(), index=ti.index)
+
+        passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
+        shots = ti[ti["type.name"] == "Shot"].copy()
+        throwins = passes[passes["possession"].isin(shots["possession"])]
+
+        pitch = Pitch(half=True, pitch_type='statsbomb', pitch_color='white', line_color='black')
+        fig, ax = pitch.draw(figsize=(10, 6))
+        pitch.arrows(throwins["location_x"], throwins["location_y"],
+                     throwins["pass.end_location_x"], throwins["pass.end_location_y"],
+                     width=2, headwidth=4, color="dodgerblue", ax=ax)
+        st.pyplot(fig)
 
     # -------------------- Download --------------------
     st.download_button(
