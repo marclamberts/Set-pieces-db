@@ -3,11 +3,12 @@ import pandas as pd
 import os
 import ast
 import plotly.graph_objects as go
-from mplsoccer import VerticalPitch, Pitch
+from mplsoccer import VerticalPitch
 import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
+
 PASSWORD = "PrincessWay2526"
 
 if "authenticated" not in st.session_state:
@@ -50,6 +51,7 @@ if st.session_state.authenticated:
     loc_df = df['location'].apply(parse_location).apply(pd.Series)
     loc_df.columns = ['location_x', 'location_y', 'location_z']
     df = pd.concat([df, loc_df], axis=1).copy()
+
     df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
     df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
@@ -129,7 +131,6 @@ if st.session_state.authenticated:
         fig.update_layout(shapes=shapes)
         st.plotly_chart(fig, use_container_width=True)
 
-        # KPIs below
         st.subheader("📊 Summary Stats")
         col1, col2, col3 = st.columns(3)
         col1.metric("Filtered Goals", len(filtered))
@@ -151,44 +152,39 @@ if st.session_state.authenticated:
             base_path = os.path.dirname(__file__)
             return pd.read_excel(os.path.join(base_path, "TI.xlsx"))
 
-        def ensure_two(loc):
+        ti = load_ti_data()
+
+        def extract_xy(loc):
             try:
                 loc = ast.literal_eval(loc) if isinstance(loc, str) else loc
-                if isinstance(loc, (list, tuple)) and len(loc) >= 2:
+                if isinstance(loc, (list, tuple)):
                     return [loc[0], loc[1]]
             except:
                 pass
             return [None, None]
 
-        ti = load_ti_data()
-        ti["location"] = ti["location"].apply(parse_location)
-        ti[["location_x", "location_y", "location_z"]] = pd.DataFrame(ti["location"].tolist(), index=ti.index)
-
-        ti[["pass.end_location_x", "pass.end_location_y"]] = (
-            ti["pass.end_location"]
-            .apply(ensure_two)
-            .apply(pd.Series)
-        )
+        ti[["location_x", "location_y"]] = ti["location"].apply(extract_xy).apply(pd.Series)
+        ti[["pass.end_location_x", "pass.end_location_y"]] = ti["pass.end_location"].apply(extract_xy).apply(pd.Series)
 
         passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
         shots = ti[ti["type.name"] == "Shot"].copy()
-        throwins = passes[passes["possession"].isin(shots["possession"])]
+        throwins = passes[passes["possession"].isin(shots["possession"])].copy()
 
-        pitch = VerticalPitch(pitch_type='statsbomb', pitch_color='white', line_color='black')
-        fig, ax = pitch.draw(figsize=(8, 10))
-        pitch.arrows(throwins["location_x"], throwins["location_y"],
-                     throwins["pass.end_location_x"], throwins["pass.end_location_y"],
-                     width=2, headwidth=4, color="dodgerblue", ax=ax)
+        pitch = VerticalPitch(half=True, pitch_type='statsbomb', pitch_color='white', line_color='black')
+        fig, ax = pitch.draw(figsize=(10, 6))
+        pitch.arrows(
+            throwins["location_x"], throwins["location_y"],
+            throwins["pass.end_location_x"], throwins["pass.end_location_y"],
+            width=2, headwidth=4, color="dodgerblue", ax=ax
+        )
         st.pyplot(fig)
 
-    # -------------------- Download --------------------
     st.download_button(
         label="⬇️ Download Filtered Data",
         data=filtered.to_csv(index=False),
         file_name="filtered_goals.csv"
     )
 
-    # -------------------- Styling --------------------
     st.markdown(f"""
         <style>
             .main {{
