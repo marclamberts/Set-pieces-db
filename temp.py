@@ -105,7 +105,7 @@ if st.session_state.authenticated:
         st.stop()
 
     # -------------------- Tabs --------------------
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test", "🌀 Throw ins"])
+    tab1, tab2, tab3 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test"])
 
     with tab1:
         fig = go.Figure()
@@ -151,145 +151,7 @@ if st.session_state.authenticated:
         st.subheader("xG Distribution")
         st.bar_chart(filtered["shot.statsbomb_xg"])
 
-    with tab4:
-        
-        st.subheader("Throw-ins Leading to Shots")
-    
-        @st.cache_data
-        def load_ti_data():
-            base_path = os.path.dirname(__file__)
-            df_ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
-            return df_ti
-    
-        ti = load_ti_data()
-    
-        # Parse location columns
-        def parse_location(loc):
-            try:
-                if isinstance(loc, str):
-                    return ast.literal_eval(loc)
-                elif isinstance(loc, (list, tuple)):
-                    return loc
-                else:
-                    return [None, None, None]
-            except:
-                return [None, None, None]
-    
-        def extract_xy(loc):
-            try:
-                if isinstance(loc, str):
-                    loc = ast.literal_eval(loc)
-                if isinstance(loc, (list, tuple)):
-                    return [loc[0], loc[1]]
-            except:
-                pass
-            return [None, None]
-    
-        ti["location_parsed"] = ti["location"].apply(parse_location)
-        ti[["location_x", "location_y", "_"]] = pd.DataFrame(ti["location_parsed"].tolist(), index=ti.index)
-    
-        ti["end_location_parsed"] = ti["pass.end_location"].apply(extract_xy)
-        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["end_location_parsed"].tolist(), index=ti.index)
-    
-        passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")]
-        shots = ti[ti["type.name"] == "Shot"]
-    
-        # Create a dictionary of possession to xG and other info
-        possession_info = shots.groupby("possession").agg({
-            "shot.statsbomb_xg": "first",
-            "team.name": "first",
-            "player.name": "first"
-        }).to_dict(orient="index")
-        
-        # Filter throw-ins that lead to shots and add info
-        throwins = passes[passes["possession"].isin(shots["possession"])].copy()
-        throwins["shot_xg"] = throwins["possession"].map(lambda x: possession_info[x]["shot.statsbomb_xg"])
-        throwins["team"] = throwins["possession"].map(lambda x: possession_info[x]["team.name"])
-        throwins["player"] = throwins["possession"].map(lambda x: possession_info[x]["player.name"])
-        
-        throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot_xg"])
-    
-        # Create Plotly figure for hover functionality
-        fig = go.Figure()
-        
-        # Add pitch outline
-        fig.add_shape(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="rgba(0,0,0,1)", width=2))
-        fig.add_shape(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="rgba(0,0,0,1)", width=1))
-        fig.add_shape(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="rgba(0,0,0,1)", width=1))
-        fig.add_shape(type="line", x0=40, y0=0, x1=40, y1=120, line=dict(color="rgba(128,128,128,1)", width=1, dash="dash"))
-        
-        # Normalize xG values for coloring
-        min_xg = throwins["shot_xg"].min()
-        max_xg = throwins["shot_xg"].max()
-        throwins["color_norm"] = (throwins["shot_xg"] - min_xg) / (max_xg - min_xg if max_xg != min_xg else 1)
-        
-        # Create color scale using RGB strings
-        colorscale = [
-            [0.0, 'rgb(255,0,0)'],    # Red
-            [0.5, 'rgb(255,255,0)'],   # Yellow
-            [1.0, 'rgb(0,255,0)']      # Green
-        ]
-        
-        # Add each throw-in as a line with hover info
-        for _, row in throwins.iterrows():
-            fig.add_trace(go.Scatter(
-                x=[row["location_y"], row["pass.end_location_y"]],
-                y=[row["location_x"], row["pass.end_location_x"]],
-                mode="lines",
-                line=dict(
-                    width=2,
-                    color=row["color_norm"],
-                    colorscale=colorscale,
-                    cmin=0,
-                    cmax=1
-                ),
-                hoverinfo="text",
-                text=f"Team: {row['team']}<br>Player: {row['player']}<br>xG: {row['shot_xg']:.2f}",
-                showlegend=False,
-                opacity=0.8
-            ))
-        
-        # Set layout for compact display
-        fig.update_layout(
-            width=400,
-            height=500,
-            margin=dict(l=20, r=20, t=30, b=20),
-            xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
-            plot_bgcolor="rgba(255,255,255,1)",
-            hovermode="closest"
-        )
-        
-        # Add colorbar
-        fig.add_trace(go.Scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            marker=dict(
-                color=[0, 0.5, 1],
-                colorscale=colorscale,
-                cmin=0,
-                cmax=1,
-                colorbar=dict(
-                    title="xG of Resulting Shot",
-                    thickness=10,
-                    len=0.5,
-                    x=0.9,
-                    tickvals=[0, 0.5, 1],
-                    ticktext=[
-                        f"{min_xg:.2f}",
-                        f"{(min_xg + max_xg)/2:.2f}",
-                        f"{max_xg:.2f}"
-                    ]
-                ),
-                showscale=True
-            ),
-            hoverinfo="none",
-            showlegend=False
-        ))
-        
-        st.plotly_chart(fig, use_container_width=False)
-        # -------------------- Download --------------------
+    # -------------------- Download --------------------
     st.download_button(
         label="⬇️ Download Filtered Data",
         data=filtered.to_csv(index=False),
