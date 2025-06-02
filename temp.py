@@ -192,7 +192,7 @@ if st.session_state.authenticated:
         poss = set(passes["possession"]).intersection(set(shots["possession"]))
         throwins = passes[passes["possession"].isin(poss)]
 
-        pitch = VerticalPitch(pitch_type='statsbomb', half=True, line_color='black', pitch_color='white',)
+        pitch = VerticalPitch(pitch_type='statsbomb', half=True, line_color='black', pitch_color='white')
         fig, ax = pitch.draw(figsize=(8, 12))
 
         pitch.arrows(
