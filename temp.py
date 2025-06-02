@@ -2,11 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import ast
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
+import plotly.graph_objects as go
 import plotly.express as px
-from mplsoccer import VerticalPitch
 
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
@@ -103,8 +100,9 @@ def convert_df(df):
 csv = convert_df(filtered)
 st.download_button("Download CSV", csv, "filtered_goals.csv", "text/csv")
 
-# Pitch Visualization for Throw-ins Leading to Shots
-st.subheader("🌀 Throw-ins Leading to Shots")
+# Interactive Pitch Visualization for Throw-ins Leading to Shots
+st.subheader("🌀 Throw-ins Leading to Shots (Interactive)")
+
 pitch_data = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
 shots = ti[ti["type.name"] == "Shot"]
 pitch_data = pitch_data[pitch_data["possession"].isin(shots["possession"])]
@@ -114,27 +112,40 @@ pitch_data = pitch_data.merge(xg_map, how="left", on="possession")
 
 pitch_data[["location_x", "location_y"]] = pitch_data["location"].apply(extract_xy).apply(pd.Series)
 pitch_data[["pass.end_location_x", "pass.end_location_y"]] = pitch_data["pass.end_location"].apply(extract_xy).apply(pd.Series)
+pitch_data = pitch_data.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"])
 
-pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
-fig, ax = pitch.draw(figsize=(6, 5))
+# Plotly figure
+fig = go.Figure()
 
-norm = mcolors.Normalize(vmin=pitch_data["shot.statsbomb_xg"].min(), vmax=pitch_data["shot.statsbomb_xg"].max())
-cmap = cm.get_cmap("coolwarm")
+for _, row in pitch_data.iterrows():
+    fig.add_trace(go.Scatter(
+        x=[row["location_x"], row["pass.end_location_x"]],
+        y=[row["location_y"], row["pass.end_location_y"]],
+        mode='lines+markers',
+        line=dict(color=row["shot.statsbomb_xg"], width=2),
+        marker=dict(size=4, color=row["shot.statsbomb_xg"], colorscale='Viridis', cmin=0, cmax=1),
+        hovertemplate=(
+            f"Player: {row['player.name']}<br>"
+            f"Team: {row['team.name']}<br>"
+            f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
+            f"Start: ({row['location_x']:.1f}, {row['location_y']:.1f})<br>"
+            f"End: ({row['pass.end_location_x']:.1f}, {row['pass.end_location_y']:.1f})<extra></extra>"
+        ),
+        showlegend=False
+    ))
 
-for _, row in pitch_data.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"]).iterrows():
-    color = cmap(norm(row["shot.statsbomb_xg"])) if pd.notnull(row["shot.statsbomb_xg"]) else "gray"
-    pitch.arrows(
-        row["location_x"], row["location_y"],
-        row["pass.end_location_x"], row["pass.end_location_y"],
-        width=2, headwidth=4, color=color, ax=ax
-    )
+fig.update_layout(
+    title="Throw-ins Leading to Shots",
+    xaxis=dict(range=[0, 120], visible=False),
+    yaxis=dict(range=[80, 0], visible=False),
+    width=500,
+    height=400,
+    plot_bgcolor='white'
+)
 
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
-cbar = fig.colorbar(sm, ax=ax)
-cbar.set_label("xG of Resulting Shot")
+st.plotly_chart(fig, use_container_width=False)
 
-st.pyplot(fig)
+# DataFrame Display
 st.dataframe(pitch_data[[
     "team.name", "player.name", "possession", "location_x", "location_y",
     "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"
