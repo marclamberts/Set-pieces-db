@@ -152,6 +152,7 @@ if st.session_state.authenticated:
         st.bar_chart(filtered["shot.statsbomb_xg"])
 
     with tab4:
+        
         st.subheader("Throw-ins Leading to Shots")
     
         @st.cache_data
@@ -212,18 +213,22 @@ if st.session_state.authenticated:
         fig = go.Figure()
         
         # Add pitch outline
-        fig.add_shape(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="black", width=2))
-        fig.add_shape(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="black", width=1))
-        fig.add_shape(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="black", width=1))
-        fig.add_shape(type="line", x0=40, y0=0, x1=40, y1=120, line=dict(color="gray", width=1, dash="dash"))
+        fig.add_shape(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="rgba(0,0,0,1)", width=2))
+        fig.add_shape(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="rgba(0,0,0,1)", width=1))
+        fig.add_shape(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="rgba(0,0,0,1)", width=1))
+        fig.add_shape(type="line", x0=40, y0=0, x1=40, y1=120, line=dict(color="rgba(128,128,128,1)", width=1, dash="dash"))
         
         # Normalize xG values for coloring
         min_xg = throwins["shot_xg"].min()
         max_xg = throwins["shot_xg"].max()
-        throwins["color_norm"] = (throwins["shot_xg"] - min_xg) / (max_xg - min_xg)
+        throwins["color_norm"] = (throwins["shot_xg"] - min_xg) / (max_xg - min_xg if max_xg != min_xg else 1)
         
-        # Create color scale
-        colorscale = [[0, 'red'], [0.5, 'yellow'], [1, 'green']]
+        # Create color scale using RGB strings
+        colorscale = [
+            [0.0, 'rgb(255,0,0)'],    # Red
+            [0.5, 'rgb(255,255,0)'],   # Yellow
+            [1.0, 'rgb(0,255,0)']      # Green
+        ]
         
         # Add each throw-in as a line with hover info
         for _, row in throwins.iterrows():
@@ -235,12 +240,13 @@ if st.session_state.authenticated:
                     width=2,
                     color=row["color_norm"],
                     colorscale=colorscale,
-                    cmin=min_xg,
-                    cmax=max_xg
+                    cmin=0,
+                    cmax=1
                 ),
                 hoverinfo="text",
                 text=f"Team: {row['team']}<br>Player: {row['player']}<br>xG: {row['shot_xg']:.2f}",
-                showlegend=False
+                showlegend=False,
+                opacity=0.8
             ))
         
         # Set layout for compact display
@@ -250,7 +256,7 @@ if st.session_state.authenticated:
             margin=dict(l=20, r=20, t=30, b=20),
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
-            plot_bgcolor="white",
+            plot_bgcolor="rgba(255,255,255,1)",
             hovermode="closest"
         )
         
@@ -262,16 +268,21 @@ if st.session_state.authenticated:
             marker=dict(
                 color=[0, 0.5, 1],
                 colorscale=colorscale,
-                cmin=min_xg,
-                cmax=max_xg,
+                cmin=0,
+                cmax=1,
                 colorbar=dict(
                     title="xG of Resulting Shot",
                     thickness=10,
                     len=0.5,
                     x=0.9,
                     tickvals=[0, 0.5, 1],
-                    ticktext=[f"{min_xg:.2f}", f"{(min_xg+max_xg)/2:.2f}", f"{max_xg:.2f}"]
-                )
+                    ticktext=[
+                        f"{min_xg:.2f}",
+                        f"{(min_xg + max_xg)/2:.2f}",
+                        f"{max_xg:.2f}"
+                    ]
+                ),
+                showscale=True
             ),
             hoverinfo="none",
             showlegend=False
