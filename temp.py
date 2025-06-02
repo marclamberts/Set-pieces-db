@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import ast
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
@@ -30,7 +30,7 @@ events, goals, ti = load_data()
 
 # Sidebar filters
 st.sidebar.header("🔎 Filter Set Piece Goals")
-set_piece_filter = st.sidebar.multiselect("Set Piece Type", goals['Set Piece Type'].unique())
+set_piece_filter = st.sidebar.multiselect("Set Piece Type", goals['play_pattern.name'].unique())
 team_filter = st.sidebar.multiselect("Team", goals['Team'].unique())
 match_filter = st.sidebar.multiselect("Match", goals['Match'].unique())
 position_filter = st.sidebar.multiselect("Position", goals['Position'].unique())
@@ -44,7 +44,7 @@ xg_range = st.sidebar.slider("xG Range", float(goals['xG'].min()), float(goals['
 # Filter data
 filtered = goals.copy()
 if set_piece_filter:
-    filtered = filtered[filtered['Set Piece Type'].isin(set_piece_filter)]
+    filtered = filtered[filtered['play_pattern.name'].isin(set_piece_filter)]
 if team_filter:
     filtered = filtered[filtered['Team'].isin(team_filter)]
 if match_filter:
@@ -100,8 +100,8 @@ def convert_df(df):
 csv = convert_df(filtered)
 st.download_button("Download CSV", csv, "filtered_goals.csv", "text/csv")
 
-# Interactive Pitch Visualization for Throw-ins Leading to Shots
-st.subheader("🌀 Throw-ins Leading to Shots (Interactive)")
+# Interactive Plotly Pitch: Throw-ins Leading to Shots
+st.subheader("🌀 Throw-ins Leading to Shots (Interactive Plot)")
 
 pitch_data = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
 shots = ti[ti["type.name"] == "Shot"]
@@ -114,16 +114,15 @@ pitch_data[["location_x", "location_y"]] = pitch_data["location"].apply(extract_
 pitch_data[["pass.end_location_x", "pass.end_location_y"]] = pitch_data["pass.end_location"].apply(extract_xy).apply(pd.Series)
 pitch_data = pitch_data.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"])
 
-# Plotly figure
+# Create plotly figure
 fig = go.Figure()
-
 for _, row in pitch_data.iterrows():
     fig.add_trace(go.Scatter(
         x=[row["location_x"], row["pass.end_location_x"]],
         y=[row["location_y"], row["pass.end_location_y"]],
         mode='lines+markers',
         line=dict(color=row["shot.statsbomb_xg"], width=2),
-        marker=dict(size=4, color=row["shot.statsbomb_xg"], colorscale='Viridis', cmin=0, cmax=1),
+        marker=dict(size=5, color=row["shot.statsbomb_xg"], colorscale='Viridis', cmin=0, cmax=1),
         hovertemplate=(
             f"Player: {row['player.name']}<br>"
             f"Team: {row['team.name']}<br>"
@@ -138,14 +137,13 @@ fig.update_layout(
     title="Throw-ins Leading to Shots",
     xaxis=dict(range=[0, 120], visible=False),
     yaxis=dict(range=[80, 0], visible=False),
-    width=500,
-    height=400,
+    width=500, height=400,
     plot_bgcolor='white'
 )
 
 st.plotly_chart(fig, use_container_width=False)
 
-# DataFrame Display
+# Data Table for pitch data
 st.dataframe(pitch_data[[
     "team.name", "player.name", "possession", "location_x", "location_y",
     "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"
