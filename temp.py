@@ -3,8 +3,6 @@ import pandas as pd
 import os
 import ast
 import plotly.graph_objects as go
-from mplsoccer import Pitch, VerticalPitch
-import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -57,6 +55,15 @@ if st.session_state.authenticated:
     loc_df = df['location'].apply(parse_location).apply(pd.Series)
     loc_df.columns = ['location_x', 'location_y', 'location_z']
     df = pd.concat([df, loc_df], axis=1).copy()
+
+    # Remove duplicate shots based on key attributes
+    df = df.drop_duplicates(
+        subset=[
+            'location_x', 'location_y', 'shot.statsbomb_xg', 
+            'team.name', 'player.name', 'Match', 'shot.body_part.name'
+        ],
+        keep='first'
+    )
 
     df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
     df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
