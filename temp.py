@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import ast
 import plotly.graph_objects as go
-from mplsoccer import Pitch
+from mplsoccer import Pitch, VerticalPitch
 import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
@@ -197,7 +197,7 @@ if st.session_state.authenticated:
 
         throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"])
 
-        pitch = Pitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
+        pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
         fig, ax = pitch.draw(figsize=(8, 12))
 
         pitch.arrows(
