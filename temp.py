@@ -212,10 +212,18 @@ if st.session_state.authenticated:
         fig = go.Figure()
         
         # Add pitch outline
-        fig.add_shape(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="black"))
-        fig.add_shape(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="black"))
-        fig.add_shape(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="black"))
-        fig.add_shape(type="line", x0=40, y0=0, x1=40, y1=120, line=dict(color="gray", dash="dash"))
+        fig.add_shape(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="black", width=2))
+        fig.add_shape(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="black", width=1))
+        fig.add_shape(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="black", width=1))
+        fig.add_shape(type="line", x0=40, y0=0, x1=40, y1=120, line=dict(color="gray", width=1, dash="dash"))
+        
+        # Normalize xG values for coloring
+        min_xg = throwins["shot_xg"].min()
+        max_xg = throwins["shot_xg"].max()
+        throwins["color_norm"] = (throwins["shot_xg"] - min_xg) / (max_xg - min_xg)
+        
+        # Create color scale
+        colorscale = [[0, 'red'], [0.5, 'yellow'], [1, 'green']]
         
         # Add each throw-in as a line with hover info
         for _, row in throwins.iterrows():
@@ -225,8 +233,10 @@ if st.session_state.authenticated:
                 mode="lines",
                 line=dict(
                     width=2,
-                    color=plt.cm.RdYlGn((row["shot_xg"] - throwins["shot_xg"].min()) / 
-                                       (throwins["shot_xg"].max() - throwins["shot_xg"].min()))
+                    color=row["color_norm"],
+                    colorscale=colorscale,
+                    cmin=min_xg,
+                    cmax=max_xg
                 ),
                 hoverinfo="text",
                 text=f"Team: {row['team']}<br>Player: {row['player']}<br>xG: {row['shot_xg']:.2f}",
@@ -250,14 +260,17 @@ if st.session_state.authenticated:
             y=[None],
             mode="markers",
             marker=dict(
-                colorscale="RdYlGn",
-                cmin=throwins["shot_xg"].min(),
-                cmax=throwins["shot_xg"].max(),
+                color=[0, 0.5, 1],
+                colorscale=colorscale,
+                cmin=min_xg,
+                cmax=max_xg,
                 colorbar=dict(
                     title="xG of Resulting Shot",
                     thickness=10,
                     len=0.5,
-                    x=0.9
+                    x=0.9,
+                    tickvals=[0, 0.5, 1],
+                    ticktext=[f"{min_xg:.2f}", f"{(min_xg+max_xg)/2:.2f}", f"{max_xg:.2f}"]
                 )
             ),
             hoverinfo="none",
