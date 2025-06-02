@@ -2,149 +2,235 @@ import streamlit as st
 import pandas as pd
 import os
 import ast
-import plotly.express as px
 import plotly.graph_objects as go
+from mplsoccer import Pitch, VerticalPitch
+import matplotlib.pyplot as plt
 
+# -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
 
-@st.cache_data
-def load_data():
-    base_path = os.path.dirname(__file__)
-    events = pd.read_excel(os.path.join(base_path, "events2.xlsx"))
-    goals = pd.read_excel(os.path.join(base_path, "merged_output.xlsx"))
-    ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
-    return events, goals, ti
+PASSWORD = "PrincessWay2526"
 
-def extract_xy(loc):
-    try:
-        if isinstance(loc, str):
-            loc = ast.literal_eval(loc)
-        if isinstance(loc, (list, tuple)):
-            return [loc[0] if len(loc) > 0 else None, loc[1] if len(loc) > 1 else None]
-    except Exception:
-        pass
-    return [None, None]
+# Session state for authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-# Load data
-events, goals, ti = load_data()
+if not st.session_state.authenticated:
+    password = st.text_input("Enter password to continue:", type="password")
+    if password == PASSWORD:
+        st.session_state.authenticated = True
+        st.experimental_rerun()
+    else:
+        st.stop()
 
-# Sidebar filters
-st.sidebar.header("🔎 Filter Set Piece Goals")
-set_piece_filter = st.sidebar.multiselect("Set Piece Type", goals['play_pattern.name'].unique())
-team_filter = st.sidebar.multiselect("Team", goals['Team'].unique())
-match_filter = st.sidebar.multiselect("Match", goals['Match'].unique())
-position_filter = st.sidebar.multiselect("Position", goals['Position'].unique())
-body_part_filter = st.sidebar.multiselect("Body Part", goals['Body Part'].unique())
-nation_filter = st.sidebar.multiselect("Nation", goals['Nation'].unique())
-league_filter = st.sidebar.multiselect("League", goals['League'].unique())
-season_filter = st.sidebar.multiselect("Season", goals['Season'].unique())
-first_time_filter = st.sidebar.selectbox("First Time Shot", ["All", "Yes", "No"])
-xg_range = st.sidebar.slider("xG Range", float(goals['xG'].min()), float(goals['xG'].max()), (0.0, float(goals['xG'].max())))
+if st.session_state.authenticated:
+    ECONOMIST_COLORS = {
+        "background": "#f5f5f5",
+        "primary": "#3d6e70",
+        "secondary": "#e3120b",
+        "text": "#121212"
+    }
 
-# Filter data
-filtered = goals.copy()
-if set_piece_filter:
-    filtered = filtered[filtered['play_pattern.name'].isin(set_piece_filter)]
-if team_filter:
-    filtered = filtered[filtered['Team'].isin(team_filter)]
-if match_filter:
-    filtered = filtered[filtered['Match'].isin(match_filter)]
-if position_filter:
-    filtered = filtered[filtered['Position'].isin(position_filter)]
-if body_part_filter:
-    filtered = filtered[filtered['Body Part'].isin(body_part_filter)]
-if nation_filter:
-    filtered = filtered[filtered['Nation'].isin(nation_filter)]
-if league_filter:
-    filtered = filtered[filtered['League'].isin(league_filter)]
-if season_filter:
-    filtered = filtered[filtered['Season'].isin(season_filter)]
-if first_time_filter == "Yes":
-    filtered = filtered[filtered['First Time Shot'] == True]
-elif first_time_filter == "No":
-    filtered = filtered[filtered['First Time Shot'] == False]
-filtered = filtered[(filtered['xG'] >= xg_range[0]) & (filtered['xG'] <= xg_range[1])]
+    @st.cache_data
+    def load_data():
+        base_path = os.path.dirname(__file__)
+        df1 = pd.read_excel(os.path.join(base_path, "events2.xlsx"))
+        try:
+            df2 = pd.read_excel(os.path.join(base_path, "merged_output.xlsx"))
+            return pd.concat([df1, df2], ignore_index=True)
+        except:
+            return df1
 
-# KPIs
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Goals", len(filtered))
-col2.metric("Avg xG", round(filtered['xG'].mean(), 3))
-col3.metric("First Time Goals", filtered['First Time Shot'].sum())
+    df = load_data()
 
-# Goal map
-fig = px.scatter(
-    filtered,
-    x="X", y="Y",
-    color="xG", size="xG",
-    hover_data=['Player', 'Team', 'xG', 'Minute'],
-    color_continuous_scale="Turbo",
-    labels={"xG": "Expected Goals"},
-    title="Set Piece Goals"
-)
-fig.update_layout(yaxis=dict(autorange='reversed'))
-st.plotly_chart(fig, use_container_width=True)
+    def parse_location(loc):
+        try:
+            if isinstance(loc, str):
+                return ast.literal_eval(loc)
+            elif isinstance(loc, (list, tuple)):
+                return loc
+            else:
+                return [None, None, None]
+        except:
+            return [None, None, None]
 
-# xG bar chart
-fig_bar = px.histogram(filtered, x="xG", nbins=30, title="xG Distribution")
-st.plotly_chart(fig_bar, use_container_width=True)
+    loc_df = df['location'].apply(parse_location).apply(pd.Series)
+    loc_df.columns = ['location_x', 'location_y', 'location_z']
+    df = pd.concat([df, loc_df], axis=1).copy()
 
-# Data Table
-st.subheader("📋 Filtered Goal Events")
-st.dataframe(filtered)
+    df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
+    df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
 
-# Download option
-@st.cache_data
-def convert_df(df):
-    return df.to_csv(index=False).encode('utf-8')
+    # -------------------- Filters --------------------
+    with st.sidebar:
+        st.header("Filters")
+        col1, col2 = st.columns(2)
 
-csv = convert_df(filtered)
-st.download_button("Download CSV", csv, "filtered_goals.csv", "text/csv")
+        with col1:
+            filters = {}
+            filters["Set Piece Type"] = st.selectbox("Set Piece", ["All"] + df["play_pattern.name"].dropna().unique().tolist())
+            filters["Team"] = st.selectbox("Team", ["All"] + df["team.name"].dropna().unique().tolist())
+            filters["Position"] = st.selectbox("Position", ["All"] + df["position.name"].dropna().unique().tolist())
+            filters["Nation"] = st.selectbox("Nation", ["All"] + df["competition.country_name"].dropna().unique().tolist())
 
-# Interactive Plotly Pitch: Throw-ins Leading to Shots
-st.subheader("🌀 Throw-ins Leading to Shots (Interactive Plot)")
+        with col2:
+            filters["Match"] = st.selectbox("Match", ["All"] + df["Match"].dropna().unique().tolist())
+            filters["Body Part"] = st.selectbox("Body Part", ["All"] + df["shot.body_part.name"].dropna().unique().tolist())
+            filters["League"] = st.selectbox("League", ["All"] + df["competition.competition_name"].dropna().unique().tolist())
+            filters["Season"] = st.selectbox("Season", ["All"] + df["season.season_name"].dropna().unique().tolist())
 
-pitch_data = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
-shots = ti[ti["type.name"] == "Shot"]
-pitch_data = pitch_data[pitch_data["possession"].isin(shots["possession"])]
+        filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "True", "False"])
+        xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01)
 
-xg_map = shots.groupby("possession")["shot.statsbomb_xg"].max()
-pitch_data = pitch_data.merge(xg_map, how="left", on="possession")
+    # -------------------- Apply Filters --------------------
+    filtered = df_goals.copy()
+    for key, col in [
+        ("Set Piece Type", "play_pattern.name"),
+        ("Team", "team.name"),
+        ("Match", "Match"),
+        ("Position", "position.name"),
+        ("Body Part", "shot.body_part.name"),
+        ("Nation", "competition.country_name"),
+        ("League", "competition.competition_name"),
+        ("Season", "season.season_name")
+    ]:
+        if filters[key] != "All":
+            filtered = filtered[filtered[col] == filters[key]]
+    if filters["First-Time"] != "All":
+        filtered = filtered[filtered["shot.first_time"] == (filters["First-Time"] == "True")]
+    filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
 
-pitch_data[["location_x", "location_y"]] = pitch_data["location"].apply(extract_xy).apply(pd.Series)
-pitch_data[["pass.end_location_x", "pass.end_location_y"]] = pitch_data["pass.end_location"].apply(extract_xy).apply(pd.Series)
-pitch_data = pitch_data.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"])
+    if filtered.empty:
+        st.warning("No goals found for this filter.")
+        st.stop()
 
-# Create plotly figure
-fig = go.Figure()
-for _, row in pitch_data.iterrows():
-    fig.add_trace(go.Scatter(
-        x=[row["location_x"], row["pass.end_location_x"]],
-        y=[row["location_y"], row["pass.end_location_y"]],
-        mode='lines+markers',
-        line=dict(color=row["shot.statsbomb_xg"], width=2),
-        marker=dict(size=5, color=row["shot.statsbomb_xg"], colorscale='Viridis', cmin=0, cmax=1),
-        hovertemplate=(
-            f"Player: {row['player.name']}<br>"
-            f"Team: {row['team.name']}<br>"
-            f"xG: {row['shot.statsbomb_xg']:.2f}<br>"
-            f"Start: ({row['location_x']:.1f}, {row['location_y']:.1f})<br>"
-            f"End: ({row['pass.end_location_x']:.1f}, {row['pass.end_location_y']:.1f})<extra></extra>"
-        ),
-        showlegend=False
-    ))
+    # -------------------- Tabs --------------------
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Goal Map", "📋 Data Table", "🧪 Test", "🌀 Throw ins"])
 
-fig.update_layout(
-    title="Throw-ins Leading to Shots",
-    xaxis=dict(range=[0, 120], visible=False),
-    yaxis=dict(range=[80, 0], visible=False),
-    width=500, height=400,
-    plot_bgcolor='white'
-)
+    with tab1:
+        fig = go.Figure()
+        fig.update_layout(
+            plot_bgcolor='white',
+            xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+            yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
+            height=600
+        )
+        fig.add_trace(go.Scatter(
+            x=filtered["location_y"],
+            y=filtered["location_x"],
+            mode='markers',
+            marker=dict(
+                size=filtered["shot.statsbomb_xg"] * 40 + 6,
+                color='crimson',
+                line=dict(width=1, color='black'),
+                opacity=0.8
+            ),
+            text=filtered.apply(lambda row: f"Team: {row['team.name']}<br>Player: {row.get('player.name', 'N/A')}<br>Body Part: {row['shot.body_part.name']}<br>Match: {row['Match']}<br>xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
+            hoverinfo='text'
+        ))
+        shapes = [
+            dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='black', width=2)),
+            dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='black')),
+            dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='black')),
+            dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='gray', dash='dash'))
+        ]
+        fig.update_layout(shapes=shapes)
+        st.plotly_chart(fig, use_container_width=True)
 
-st.plotly_chart(fig, use_container_width=False)
+        # KPIs below
+        st.subheader("📊 Summary Stats")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Filtered Goals", len(filtered))
+        col2.metric("Average xG", round(filtered["shot.statsbomb_xg"].mean(), 3))
+        col3.metric("Most Frequent Set Piece", filtered["play_pattern.name"].mode()[0] if not filtered.empty else "N/A")
 
-# Data Table for pitch data
-st.dataframe(pitch_data[[
-    "team.name", "player.name", "possession", "location_x", "location_y",
-    "pass.end_location_x", "pass.end_location_y", "shot.statsbomb_xg"
-]].dropna())
+    with tab2:
+        st.dataframe(filtered)
+
+    with tab3:
+        st.subheader("xG Distribution")
+        st.bar_chart(filtered["shot.statsbomb_xg"])
+
+    with tab4:
+        st.subheader("Throw-ins Leading to Shots")
+
+        @st.cache_data
+        def load_ti_data():
+            base_path = os.path.dirname(__file__)
+            df_ti = pd.read_excel(os.path.join(base_path, "TI.xlsx"))
+            return df_ti
+
+        ti = load_ti_data()
+
+        # Parse location columns
+        def parse_location(loc):
+            try:
+                if isinstance(loc, str):
+                    return ast.literal_eval(loc)
+                elif isinstance(loc, (list, tuple)):
+                    return loc
+                else:
+                    return [None, None, None]
+            except:
+                return [None, None, None]
+
+        def extract_xy(loc):
+            try:
+                if isinstance(loc, str):
+                    loc = ast.literal_eval(loc)
+                if isinstance(loc, (list, tuple)):
+                    return [loc[0], loc[1]]
+            except:
+                pass
+            return [None, None]
+
+        ti["location_parsed"] = ti["location"].apply(parse_location)
+        ti[["location_x", "location_y", "_"]] = pd.DataFrame(ti["location_parsed"].tolist(), index=ti.index)
+
+        ti["end_location_parsed"] = ti["pass.end_location"].apply(extract_xy)
+        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["end_location_parsed"].tolist(), index=ti.index)
+
+        passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")]
+        shots = ti[ti["type.name"] == "Shot"]
+
+        throwins = passes[passes["possession"].isin(shots["possession"])]
+
+        throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"])
+
+        pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
+        fig, ax = pitch.draw(figsize=(8, 12))
+
+        pitch.arrows(
+            throwins["location_x"], throwins["location_y"],
+            throwins["pass.end_location_x"], throwins["pass.end_location_y"],
+            width=3, headwidth=6, headlength=6, color="dodgerblue", ax=ax, alpha=0.9
+        )
+
+        st.pyplot(fig)
+
+    # -------------------- Download --------------------
+    st.download_button(
+        label="⬇️ Download Filtered Data",
+        data=filtered.to_csv(index=False),
+        file_name="filtered_goals.csv"
+    )
+
+    # -------------------- Styling --------------------
+    st.markdown(f"""
+        <style>
+            .main {{
+                background-color: {ECONOMIST_COLORS['background']};
+            }}
+            .stButton>button {{
+                background-color: {ECONOMIST_COLORS['primary']};
+                color: white;
+                border-radius: 4px;
+            }}
+            .stButton>button:hover {{
+                background-color: {ECONOMIST_COLORS['secondary']};
+            }}
+            .stDataFrame {{
+                font-family: Arial, sans-serif;
+            }}
+        </style>
+    """, unsafe_allow_html=True)
