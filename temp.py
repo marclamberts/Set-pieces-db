@@ -193,18 +193,39 @@ if st.session_state.authenticated:
         passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")]
         shots = ti[ti["type.name"] == "Shot"]
 
-        throwins = passes[passes["possession"].isin(shots["possession"])]
+        # Create a dictionary of possession to xG
+        possession_xg = shots.groupby("possession")["shot.statsbomb_xg"].first().to_dict()
+        
+        # Filter throw-ins that lead to shots and add xG information
+        throwins = passes[passes["possession"].isin(shots["possession"])].copy()
+        throwins["shot_xg"] = throwins["possession"].map(possession_xg)
+        
+        throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot_xg"])
 
-        throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"])
-
+        # Create figure with smaller size
         pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
-        fig, ax = pitch.draw(figsize=(8, 12))
+        fig, ax = pitch.draw(figsize=(6, 8))  # Reduced figure size
 
-        pitch.arrows(
-            throwins["location_x"], throwins["location_y"],
-            throwins["pass.end_location_x"], throwins["pass.end_location_y"],
-            width=3, headwidth=6, headlength=6, color="dodgerblue", ax=ax, alpha=0.9
-        )
+        # Create a colormap based on xG values
+        norm = plt.Normalize(vmin=throwins["shot_xg"].min(), vmax=throwins["shot_xg"].max())
+        cmap = plt.cm.RdYlGn  # Red-Yellow-Green colormap (red for low xG, green for high xG)
+        
+        # Plot each arrow with color based on xG
+        for _, row in throwins.iterrows():
+            pitch.arrows(
+                row["location_x"], row["location_y"],
+                row["pass.end_location_x"], row["pass.end_location_y"],
+                width=2, headwidth=4, headlength=4, 
+                color=cmap(norm(row["shot_xg"])), 
+                ax=ax, alpha=0.8
+            )
+
+        # Add colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.05)
+        cbar.set_label('xG of Resulting Shot', fontsize=8)
+        cbar.ax.tick_params(labelsize=8)
 
         st.pyplot(fig)
 
