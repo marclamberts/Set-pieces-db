@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import os
 import ast
-from mplsoccer import Pitch, VerticalPitch
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from mplsoccer import Pitch
+import matplotlib.pyplot as plt
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -24,7 +24,6 @@ if not st.session_state.authenticated:
         st.stop()
 
 if st.session_state.authenticated:
-
     ECONOMIST_COLORS = {
         "background": "#f5f5f5",
         "primary": "#3d6e70",
@@ -46,14 +45,18 @@ if st.session_state.authenticated:
 
     def parse_location(loc):
         try:
-            return ast.literal_eval(loc) if isinstance(loc, str) else loc
+            if isinstance(loc, str):
+                return ast.literal_eval(loc)
+            elif isinstance(loc, (list, tuple)):
+                return loc
+            else:
+                return [None, None, None]
         except:
             return [None, None, None]
 
-    # Parse location into x,y,z
     loc_df = df['location'].apply(parse_location).apply(pd.Series)
     loc_df.columns = ['location_x', 'location_y', 'location_z']
-    df = pd.concat([df, loc_df], axis=1)
+    df = pd.concat([df, loc_df], axis=1).copy()
 
     df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
     df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
@@ -159,51 +162,51 @@ if st.session_state.authenticated:
 
         ti = load_ti_data()
 
-        # Parse location columns (location has x,y,z; end_location has only x,y)
-        def parse_location_3(loc):
+        # Parse location columns
+        def parse_location(loc):
             try:
                 if isinstance(loc, str):
-                    loc = ast.literal_eval(loc)
-                if isinstance(loc, (list, tuple)) and len(loc) >= 3:
-                    return loc[:3]
+                    return ast.literal_eval(loc)
+                elif isinstance(loc, (list, tuple)):
+                    return loc
                 else:
                     return [None, None, None]
             except:
                 return [None, None, None]
 
-        def parse_location_2(loc):
+        def extract_xy(loc):
             try:
                 if isinstance(loc, str):
                     loc = ast.literal_eval(loc)
-                if isinstance(loc, (list, tuple)) and len(loc) >= 2:
-                    return loc[:2]
-                else:
-                    return [None, None]
+                if isinstance(loc, (list, tuple)):
+                    return [loc[0], loc[1]]
             except:
-                return [None, None]
+                pass
+            return [None, None]
 
-        ti[["location_x", "location_y", "location_z"]] = pd.DataFrame(ti["location"].apply(parse_location_3).tolist(), index=ti.index)
-        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["pass.end_location"].apply(parse_location_2).tolist(), index=ti.index)
+        ti["location_parsed"] = ti["location"].apply(parse_location)
+        ti[["location_x", "location_y", "_"]] = pd.DataFrame(ti["location_parsed"].tolist(), index=ti.index)
 
-        # Filter for throw-in passes and their associated shots
-        passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")].copy()
-        shots = ti[ti["type.name"] == "Shot"].copy()
-        # Match possessions between passes and shots
-        poss = set(passes["possession"]).intersection(set(shots["possession"]))
-        throwins = passes[passes["possession"].isin(poss)]
+        ti["end_location_parsed"] = ti["pass.end_location"].apply(extract_xy)
+        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["end_location_parsed"].tolist(), index=ti.index)
 
-        pitch = VerticalPitch(pitch_type='statsbomb', half=True, line_color='black', pitch_color='white')
+        passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")]
+        shots = ti[ti["type.name"] == "Shot"]
+
+        throwins = passes[passes["possession"].isin(shots["possession"])]
+
+        throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"])
+
+        pitch = Pitch(pitch_type='statsbomb', half=True, orientation='vertical', pitch_color='white', line_color='black')
         fig, ax = pitch.draw(figsize=(8, 12))
 
         pitch.arrows(
             throwins["location_x"], throwins["location_y"],
             throwins["pass.end_location_x"], throwins["pass.end_location_y"],
-            width=2, headwidth=4, color="dodgerblue", ax=ax
+            width=3, headwidth=6, headlength=6, color="dodgerblue", ax=ax, alpha=0.9
         )
-        st.pyplot(fig)
 
-        st.subheader("Throw-in Pass Data")
-        st.dataframe(throwins)
+        st.pyplot(fig)
 
     # -------------------- Download --------------------
     st.download_button(
