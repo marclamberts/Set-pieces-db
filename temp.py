@@ -151,7 +151,7 @@ if st.session_state.authenticated:
         st.subheader("xG Distribution")
         st.bar_chart(filtered["shot.statsbomb_xg"])
 
-        with tab4:
+    with tab4:
         st.subheader("Throw-ins Leading to Shots")
     
         @st.cache_data
