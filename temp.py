@@ -5,8 +5,6 @@ import ast
 import plotly.graph_objects as go
 from mplsoccer import Pitch, VerticalPitch
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="Set Piece Goals Dashboard", layout="wide")
@@ -164,6 +162,18 @@ if st.session_state.authenticated:
 
         ti = load_ti_data()
 
+        # Parse location columns
+        def parse_location(loc):
+            try:
+                if isinstance(loc, str):
+                    return ast.literal_eval(loc)
+                elif isinstance(loc, (list, tuple)):
+                    return loc
+                else:
+                    return [None, None, None]
+            except:
+                return [None, None, None]
+
         def extract_xy(loc):
             try:
                 if isinstance(loc, str):
@@ -174,23 +184,53 @@ if st.session_state.authenticated:
                 pass
             return [None, None]
 
-        # Parse locations
-        ti[["location_x", "location_y"]] = pd.DataFrame(ti["location"].apply(extract_xy).tolist(), index=ti.index)
-        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["pass.end_location"].apply(extract_xy).tolist(), index=ti.index)
+        ti["location_parsed"] = ti["location"].apply(parse_location)
+        ti[["location_x", "location_y", "_"]] = pd.DataFrame(ti["location_parsed"].tolist(), index=ti.index)
+
+        ti["end_location_parsed"] = ti["pass.end_location"].apply(extract_xy)
+        ti[["pass.end_location_x", "pass.end_location_y"]] = pd.DataFrame(ti["end_location_parsed"].tolist(), index=ti.index)
 
         passes = ti[(ti["type.name"] == "Pass") & (ti["play_pattern.name"] == "From Throw In")]
         shots = ti[ti["type.name"] == "Shot"]
 
-        throwins = passes[passes["possession"].isin(shots["possession"])].copy()
-
-        # Map possession -> max shot xG
-        possession_xg = shots.groupby("possession")["shot.statsbomb_xg"].max()
-        throwins["shot_xG"] = throwins["possession"].map(possession_xg)
+        throwins = passes[passes["possession"].isin(shots["possession"])]
 
         throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y"])
 
         pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='white', line_color='black')
-        fig, ax = pitch.draw(figsize=(7, 5))
+        fig, ax = pitch.draw(figsize=(8, 12))
 
-        # Normalize xG for color mapping
-        norm = mcolors.Normalize(vmin=0, vmax=throwins["shot_xG"].max() if not throwins["
+        pitch.arrows(
+            throwins["location_x"], throwins["location_y"],
+            throwins["pass.end_location_x"], throwins["pass.end_location_y"],
+            width=3, headwidth=6, headlength=6, color="dodgerblue", ax=ax, alpha=0.9
+        )
+
+        st.pyplot(fig)
+
+    # -------------------- Download --------------------
+    st.download_button(
+        label="⬇️ Download Filtered Data",
+        data=filtered.to_csv(index=False),
+        file_name="filtered_goals.csv"
+    )
+
+    # -------------------- Styling --------------------
+    st.markdown(f"""
+        <style>
+            .main {{
+                background-color: {ECONOMIST_COLORS['background']};
+            }}
+            .stButton>button {{
+                background-color: {ECONOMIST_COLORS['primary']};
+                color: white;
+                border-radius: 4px;
+            }}
+            .stButton>button:hover {{
+                background-color: {ECONOMIST_COLORS['secondary']};
+            }}
+            .stDataFrame {{
+                font-family: Arial, sans-serif;
+            }}
+        </style>
+    """, unsafe_allow_html=True)
