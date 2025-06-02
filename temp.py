@@ -197,8 +197,7 @@ if st.session_state.authenticated:
         possession_info = shots.groupby("possession").agg({
             "shot.statsbomb_xg": "first",
             "team.name": "first",
-            "player.name": "first",
-            "Match": "first"
+            "player.name": "first"
         }).to_dict(orient="index")
         
         # Filter throw-ins that lead to shots and add info
@@ -206,7 +205,6 @@ if st.session_state.authenticated:
         throwins["shot_xg"] = throwins["possession"].map(lambda x: possession_info[x]["shot.statsbomb_xg"])
         throwins["team"] = throwins["possession"].map(lambda x: possession_info[x]["team.name"])
         throwins["player"] = throwins["possession"].map(lambda x: possession_info[x]["player.name"])
-        throwins["match"] = throwins["possession"].map(lambda x: possession_info[x]["Match"])
         
         throwins = throwins.dropna(subset=["location_x", "location_y", "pass.end_location_x", "pass.end_location_y", "shot_xg"])
     
@@ -231,15 +229,15 @@ if st.session_state.authenticated:
                                        (throwins["shot_xg"].max() - throwins["shot_xg"].min()))
                 ),
                 hoverinfo="text",
-                text=f"Team: {row['team']}<br>Player: {row['player']}<br>Match: {row['match']}<br>xG: {row['shot_xg']:.2f}",
+                text=f"Team: {row['team']}<br>Player: {row['player']}<br>xG: {row['shot_xg']:.2f}",
                 showlegend=False
             ))
         
         # Set layout for compact display
         fig.update_layout(
-            width=400,  # Smaller width
-            height=500,  # Smaller height
-            margin=dict(l=20, r=20, t=30, b=20),  # Reduced margins
+            width=400,
+            height=500,
+            margin=dict(l=20, r=20, t=30, b=20),
             xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
             yaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
             plot_bgcolor="white",
@@ -258,8 +256,8 @@ if st.session_state.authenticated:
                 colorbar=dict(
                     title="xG of Resulting Shot",
                     thickness=10,
-                    len=0.5,  # Shorter colorbar
-                    x=0.9  # Position colorbar
+                    len=0.5,
+                    x=0.9
                 )
             ),
             hoverinfo="none",
@@ -267,8 +265,7 @@ if st.session_state.authenticated:
         ))
         
         st.plotly_chart(fig, use_container_width=False)
-
-    # -------------------- Download --------------------
+        # -------------------- Download --------------------
     st.download_button(
         label="⬇️ Download Filtered Data",
         data=filtered.to_csv(index=False),
