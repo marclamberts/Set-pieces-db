@@ -36,7 +36,7 @@ if st.session_state.authenticated:
         base_path = os.path.dirname(__file__)
         df1 = pd.read_excel(os.path.join(base_path, "events2.xlsx"))
         try:
-            df2 = pd.read_excel(os.path.join(base_path, "merged_output.xlsx"))
+            df2 = pd.read_excel(os.path.join(base_path, "db.xlsx"))
             return pd.concat([df1, df2], ignore_index=True)
         except:
             return df1
