@@ -131,61 +131,72 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🌟 Goal Locations")
+    st.markdown("### 🌟 Goal Locations on Vertical Half Pitch")
 
     fig = go.Figure()
 
-    # Draw football pitch
+    # Draw vertical half pitch (left half from 0 to 60, height 80)
     fig.update_layout(
-        xaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
+        xaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
         yaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-        plot_bgcolor='white', height=600,
+        plot_bgcolor='white', height=700,
         shapes=[
-            # Outer pitch
-            dict(type="rect", x0=0, y0=0, x1=120, y1=80, line=dict(color="black", width=2)),
-            # Penalty area left
+            # Outer half pitch
+            dict(type="rect", x0=0, y0=0, x1=60, y1=80, line=dict(color="black", width=2)),
+            # Penalty area
             dict(type="rect", x0=0, y0=18, x1=18, y1=62, line=dict(color="black", width=2)),
-            # Six yard box left
+            # Six yard box
             dict(type="rect", x0=0, y0=30, x1=6, y1=50, line=dict(color="black", width=2)),
-            # Goal line left
+            # Goal line
             dict(type="line", x0=0, y0=30, x1=0, y1=50, line=dict(color="black", width=4)),
-            # Penalty spot left
+            # Penalty spot
             dict(type="circle", xref="x", yref="y", x0=11, y0=38, x1=13, y1=40, line=dict(color="black", width=2)),
-            # Center circle
-            dict(type="circle", xref="x", yref="y", x0=50, y0=30, x1=70, y1=50, line=dict(color="black", width=2)),
-            # Halfway line
+            # Arc of the penalty area
+            dict(type="path",
+                 path="M 18 18 A 20 22 0 0 1 18 62",
+                 line=dict(color="black", width=2)),
+            # Halfway line (vertical at 60)
             dict(type="line", x0=60, y0=0, x1=60, y1=80, line=dict(color="black", width=2)),
+            # Center circle (half circle on halfway line)
+            dict(type="path",
+                 path="M 60 30 A 20 20 0 0 1 60 50",
+                 line=dict(color="black", width=2)),
         ]
     )
 
+    # Filter to only goals on left half pitch (location_x <= 60)
+    filtered_half = filtered[filtered["location_x"] <= 60]
+
     hover_text = (
-        "Player: " + filtered["player.name"] +
-        "<br>Team: " + filtered["team.name"] +
-        "<br>xG: " + filtered["shot.statsbomb_xg"].round(2).astype(str) +
-        "<br>Body Part: " + filtered["shot.body_part.name"] +
-        "<br>Match: " + filtered["Match"] +
-        "<br>League: " + filtered["competition.competition_name"]
+        "Player: " + filtered_half["player.name"] +
+        "<br>Team: " + filtered_half["team.name"] +
+        "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
+        "<br>Body Part: " + filtered_half["shot.body_part.name"] +
+        "<br>Match: " + filtered_half["Match"] +
+        "<br>League: " + filtered_half["competition.competition_name"]
     )
+
     fig.add_trace(go.Scatter(
-        x=filtered["location_x"],
-        y=filtered["location_y"],
+        x=filtered_half["location_x"],
+        y=filtered_half["location_y"],
         mode='markers',
         marker=dict(
-            size=filtered["shot.statsbomb_xg"] * 40 + 6,
-            color='#3498db',
+            size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
+            color='#e74c3c',
             line=dict(width=1, color='#2c3e50')
         ),
         hoverinfo='text',
         text=hover_text
     ))
+
     st.plotly_chart(fig, use_container_width=True)
 
-    # Simulated clickable: player selector to view their goals
-    selected_player = st.selectbox("Select Player to View Goals", sorted(filtered["player.name"].unique()))
-    player_goals = filtered[filtered["player.name"] == selected_player]
+    selected_player = st.selectbox("Select Player to View Goals", sorted(filtered_half["player.name"].unique()))
+    player_goals = filtered_half[filtered_half["player.name"] == selected_player]
     st.dataframe(player_goals[[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
+
 
 with tab2:
     st.markdown("### 🔍 Data Table")
