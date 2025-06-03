@@ -59,7 +59,7 @@ def load_data():
     df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
     df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
     df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
-    df["cseason.season_name"] = df["season.season_name"].astype(str).str.strip()
+    df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
     return df
 
 df = load_data()
