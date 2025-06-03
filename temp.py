@@ -131,40 +131,47 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🌟 Goal Locations — True Vertical Half Pitch (Goal at Top)")
+    st.markdown("### 🌟 Goal Locations on Vertical Half Pitch (Goal at Top)")
 
     fig = go.Figure()
 
-    # Pitch layout (vertical): y is depth (location_x), x is width (location_y)
+    # Configure pitch layout: vertical half with goal at top
     fig.update_layout(
         xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
         yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False, scaleanchor="x"),
         plot_bgcolor='white',
         height=700,
         shapes=[
-            # Pitch boundary
+            # Outer pitch
             dict(type="rect", x0=0, y0=60, x1=80, y1=120, line=dict(color="black", width=2)),
+
             # Penalty area
             dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="black", width=2)),
+
             # Six-yard box
             dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="black", width=2)),
+
             # Goal line
             dict(type="line", x0=30, y0=120, x1=50, y1=120, line=dict(color="black", width=4)),
+
             # Penalty spot
             dict(type="circle", xref="x", yref="y", x0=38, y0=107, x1=40, y1=109, line=dict(color="black", width=2)),
+
             # Penalty arc
             dict(type="path", path="M 18 102 A 22 22 0 0 1 62 102", line=dict(color="black", width=2)),
+
             # Halfway line
             dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
-            # Center circle (bottom half)
+
+            # Center circle (bottom half only)
             dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
         ]
     )
 
-    # Only include goals on attacking half
+    # Filter for right-half pitch (x >= 60) if not already done
     filtered_half = filtered[filtered["location_x"] >= 60]
 
-    # Goal marker scatter
+    # Build hover text
     hover_text = (
         "Player: " + filtered_half["player.name"] +
         "<br>Team: " + filtered_half["team.name"] +
@@ -174,9 +181,10 @@ with tab1:
         "<br>League: " + filtered_half["competition.competition_name"]
     )
 
+    # Add goal markers
     fig.add_trace(go.Scatter(
-        x=filtered_half["location_y"],  # width of pitch
-        y=filtered_half["location_x"],  # depth of pitch
+        x=filtered_half["location_y"],
+        y=filtered_half["location_x"],
         mode='markers',
         marker=dict(
             size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
@@ -189,6 +197,7 @@ with tab1:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # Player filter and detailed table
     selected_player = st.selectbox("Select Player to View Goals", sorted(filtered_half["player.name"].unique()))
     player_goals = filtered_half[filtered_half["player.name"] == selected_player]
     st.dataframe(player_goals[[
