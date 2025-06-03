@@ -14,19 +14,18 @@ st.set_page_config(
 
 PASSWORD = "PrincessWay2526"
 
-# -------------------- CSS --------------------
+# Custom CSS
 professional_style = """
 <style>
     .main { background-color: #f8f9fa; }
     .sidebar .sidebar-content { background-color: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
     h1, h2, h3, h4, h5, h6 { color: #2c3e50; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     .stButton>button {
-        background-color: #3498db; color: white; border-radius: 6px;
-        border: none; padding: 8px 16px; font-weight: 500; transition: all 0.3s ease;
+        background-color: #3498db; color: white; border-radius: 6px; border: none;
+        padding: 8px 16px; font-weight: 500; transition: all 0.3s ease;
     }
     .stButton>button:hover {
-        background-color: #2980b9; transform: translateY(-1px);
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        background-color: #2980b9; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] {
@@ -41,8 +40,10 @@ professional_style = """
         background-color: white; border-radius: 8px; padding: 15px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-left: 4px solid #3498db;
     }
+    .stSelectbox, .stSlider, .stTextInput { margin-bottom: 15px; }
 </style>
 """
+
 st.markdown(professional_style, unsafe_allow_html=True)
 
 # -------------------- Auth --------------------
@@ -51,7 +52,8 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.title("🔒 Set Piece Analysis Dashboard")
-    col1, col2, col3 = st.columns([1,2,1])
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("### Please authenticate to continue")
         password = st.text_input("Enter password:", type="password")
@@ -64,18 +66,20 @@ if not st.session_state.authenticated:
         st.caption("© 2023 Football Analytics Team")
     st.stop()
 
-# -------------------- Data Load --------------------
+# -------------------- Load Data --------------------
 @st.cache_data
 def load_data():
     base_path = os.path.dirname(__file__)
     df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
     df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
-    st.session_state.available_nations = sorted(df["competition.country_name"].dropna().unique().tolist())
     return df
 
 with st.spinner("Loading data..."):
     df = load_data()
+    if "available_nations" not in st.session_state:
+        st.session_state.available_nations = sorted(df["competition.country_name"].dropna().unique().tolist())
 
+# -------------------- Preprocessing --------------------
 def parse_location(loc):
     try:
         if isinstance(loc, str):
@@ -135,49 +139,40 @@ if filtered.empty:
     st.warning("No goals found matching these filters. Please adjust your criteria.")
     st.stop()
 
-# -------------------- Header --------------------
+# -------------------- Main Dashboard --------------------
 st.title("⚽ Set Piece Goals Analysis")
-st.markdown("---")
+st.markdown("Explore filtered set piece goals data with interactive charts and detailed stats.")
 
-# -------------------- Metrics --------------------
+# -------------------- Summary Cards --------------------
 st.subheader("📊 Overview Metrics")
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total Goals", len(filtered))
-with col2:
-    st.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
-with col3:
-    st.metric("Top Team", filtered['team.name'].mode()[0] if not filtered.empty else "N/A")
-with col4:
-    st.metric("Most Common Type", filtered['play_pattern.name'].mode()[0] if not filtered.empty else "N/A")
+with col1: st.metric("Total Goals", len(filtered))
+with col2: st.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
+with col3: st.metric("Top Team", filtered['team.name'].mode()[0])
+with col4: st.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
-tab0, tab1, tab2, tab3 = st.tabs(["📌 Dashboard", "📊 Goal Map", "📋 Data Explorer", "📈 xG Analysis"])
+tab0, tab1, tab2, tab3 = st.tabs(["📈 General Dashboard", "🎯 Goal Map", "📋 Data Explorer", "📊 xG Analysis"])
 
 with tab0:
-    st.markdown("### 📌 Summary Dashboard")
+    st.markdown("### 📈 General Overview")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Top Teams**")
-        st.bar_chart(filtered["team.name"].value_counts().head(5))
+        st.markdown("**Goals by Team**")
+        team_count = filtered['team.name'].value_counts()
+        st.bar_chart(team_count)
     with col2:
-        st.markdown("**Top Players**")
-        st.bar_chart(filtered["player.name"].value_counts().head(5))
-    col3, col4 = st.columns(2)
-    with col3:
-        st.markdown("**Body Part Distribution**")
-        st.dataframe(filtered["shot.body_part.name"].value_counts().reset_index().rename(columns={"index": "Body Part", "shot.body_part.name": "Goals"}))
-    with col4:
-        st.markdown("**Set Piece Types**")
-        st.dataframe(filtered["play_pattern.name"].value_counts().reset_index().rename(columns={"index": "Type", "play_pattern.name": "Goals"}))
+        st.markdown("**Goals by Set Piece Type**")
+        type_count = filtered['play_pattern.name'].value_counts()
+        st.bar_chart(type_count)
 
 with tab1:
     st.markdown("### 🎯 Goal Locations")
     fig = go.Figure()
     fig.update_layout(
         plot_bgcolor='white',
-        xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
+        xaxis=dict(range=[0, 80], visible=False),
+        yaxis=dict(range=[60, 120], visible=False),
         height=600,
         margin=dict(l=0, r=0, t=30, b=0)
     )
@@ -185,7 +180,7 @@ with tab1:
         x=filtered["location_y"], y=filtered["location_x"],
         mode='markers',
         marker=dict(size=filtered["shot.statsbomb_xg"] * 40 + 6, color='#3498db', line=dict(width=1, color='#2c3e50'), opacity=0.8),
-        text=filtered.apply(lambda row: f"<b>Team:</b> {row['team.name']}<br><b>Player:</b> {row.get('player.name', 'N/A')}<br><b>Body Part:</b> {row['shot.body_part.name']}<br><b>Match:</b> {row['Match']}<br><b>xG:</b> {row['shot.statsbomb_xg']:.2f}", axis=1),
+        text=filtered.apply(lambda row: f"<b>Team:</b> {row['team.name']}<br><b>Player:</b> {row.get('player.name', 'N/A')}<br><b>Body Part:</b> {row['shot.body_part.name']}<br><b>xG:</b> {row['shot.statsbomb_xg']:.2f}", axis=1),
         hoverinfo='text'
     ))
     fig.update_layout(shapes=[
@@ -201,69 +196,27 @@ with tab2:
     st.dataframe(filtered, use_container_width=True)
 
 with tab3:
-    st.markdown("### 📈 xG Distribution & Insights")
-    viz_type = st.selectbox("Select Visualization Type", [
-        "xG Histogram", "Average xG by Category", "Top xG Goals",
-        "xG vs. Goal Map", "xG Density (Box Plot)"
-    ])
-    if viz_type == "xG Histogram":
+    st.markdown("### 📈 xG Visualizations")
+    chart_type = st.selectbox("Choose xG Chart", ["Histogram", "Box Plot", "Bar by Category", "Scatter"])
+
+    if chart_type == "Histogram":
         st.bar_chart(filtered["shot.statsbomb_xg"])
-
-    elif viz_type == "Average xG by Category":
-        category = st.selectbox("Group by:", ["Team", "Body Part", "Play Pattern", "Position", "Nation", "League"])
-        group_col = {
-            "Team": "team.name", "Body Part": "shot.body_part.name",
-            "Play Pattern": "play_pattern.name", "Position": "position.name",
-            "Nation": "competition.country_name", "League": "competition.competition_name"
-        }[category]
-        xg_by_cat = filtered.groupby(group_col)["shot.statsbomb_xg"].mean().sort_values(ascending=False)
+    elif chart_type == "Box Plot":
+        st.plotly_chart(px.box(filtered, y="shot.statsbomb_xg", points="all"), use_container_width=True)
+    elif chart_type == "Bar by Category":
+        category = st.selectbox("Group xG by:", ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"])
+        xg_by_cat = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False)
         st.bar_chart(xg_by_cat)
+    elif chart_type == "Scatter":
+        st.plotly_chart(px.scatter(filtered, x="location_x", y="location_y", size="shot.statsbomb_xg", color="team.name", hover_name="player.name"), use_container_width=True)
 
-    elif viz_type == "Top xG Goals":
-        top_goals = filtered.sort_values(by="shot.statsbomb_xg", ascending=False).head(10)
-        st.dataframe(top_goals[["team.name", "player.name", "shot.statsbomb_xg", "Match", "play_pattern.name"]])
-
-    elif viz_type == "xG vs. Goal Map":
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=filtered["location_y"], y=filtered["location_x"],
-            mode='markers',
-            marker=dict(
-                size=filtered["shot.statsbomb_xg"] * 40 + 6,
-                color=filtered["shot.statsbomb_xg"],
-                colorscale="Viridis", showscale=True,
-                colorbar=dict(title="xG")
-            ),
-            text=filtered.apply(lambda row: f"{row['player.name']} ({row['team.name']})<br>xG: {row['shot.statsbomb_xg']:.2f}", axis=1),
-            hoverinfo='text'
-        ))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), height=600, plot_bgcolor='white')
-        st.plotly_chart(fig, use_container_width=True)
-
-    elif viz_type == "xG Density (Box Plot)":
-        category = st.selectbox("Boxplot by:", ["Team", "Body Part", "Play Pattern"])
-        group_col = {
-            "Team": "team.name",
-            "Body Part": "shot.body_part.name",
-            "Play Pattern": "play_pattern.name"
-        }[category]
-        fig = px.box(filtered, x=group_col, y="shot.statsbomb_xg", color=group_col)
-        st.plotly_chart(fig, use_container_width=True)
-
-# -------------------- Download --------------------
-st.markdown("---")
+# -------------------- Download Button --------------------
 st.download_button(
-    label="⬇️ Download Filtered Data as CSV",
+    label="⬇️ Download Filtered Data",
     data=filtered.to_csv(index=False),
-    file_name="set_piece_goals_analysis.csv",
+    file_name="set_piece_goals_filtered.csv",
     mime="text/csv",
     use_container_width=True
 )
 
-# -------------------- Footer --------------------
-st.markdown("---")
-st.markdown("""
-    <div style="text-align: center; padding: 20px;">
-        <p>© 2025 Outswinger FC - Data Consultancy | Powered by Streamlit</p>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center;'>© 2023 Football Analytics | Powered by Streamlit</div>", unsafe_allow_html=True)
