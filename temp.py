@@ -135,23 +135,23 @@ with tab1:
 
     fig = go.Figure()
 
-    # Configure pitch layout: vertical half with goal at top
+    # Draw vertical half pitch with goal at top (rotated 90 degrees right)
     fig.update_layout(
         xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(range=[120, 60], showgrid=False, zeroline=False, visible=False, scaleanchor="x"),
+        yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False, scaleanchor="x"),
         plot_bgcolor='white',
         height=700,
         shapes=[
-            # Outer pitch
+            # Outer pitch rectangle (vertical half pitch)
             dict(type="rect", x0=0, y0=60, x1=80, y1=120, line=dict(color="black", width=2)),
 
-            # Penalty area
+            # Penalty area (vertical orientation)
             dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="black", width=2)),
 
             # Six-yard box
             dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="black", width=2)),
 
-            # Goal line
+            # Goal line (top horizontal)
             dict(type="line", x0=30, y0=120, x1=50, y1=120, line=dict(color="black", width=4)),
 
             # Penalty spot
@@ -160,18 +160,23 @@ with tab1:
             # Penalty arc
             dict(type="path", path="M 18 102 A 22 22 0 0 1 62 102", line=dict(color="black", width=2)),
 
-            # Halfway line
+            # Halfway line (bottom horizontal)
             dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
 
-            # Center circle (bottom half only)
+            # Center circle (half circle on halfway line)
             dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
         ]
     )
 
-    # Filter for right-half pitch (x >= 60) if not already done
-    filtered_half = filtered[filtered["location_x"] >= 60]
+    # Rotate the coordinates 90 degrees right:
+    # Original location_x is horizontal pitch coord (0 to 120 length),
+    # location_y is width (0 to 80).
+    # For rotation, new_x = location_y, new_y = 120 - location_x
 
-    # Build hover text
+    filtered_half = filtered[filtered["location_x"] >= 60].copy()
+    filtered_half["plot_x"] = filtered_half["location_y"]
+    filtered_half["plot_y"] = 120 - filtered_half["location_x"]
+
     hover_text = (
         "Player: " + filtered_half["player.name"] +
         "<br>Team: " + filtered_half["team.name"] +
@@ -181,10 +186,9 @@ with tab1:
         "<br>League: " + filtered_half["competition.competition_name"]
     )
 
-    # Add goal markers
     fig.add_trace(go.Scatter(
-        x=filtered_half["location_y"],
-        y=filtered_half["location_x"],
+        x=filtered_half["plot_x"],
+        y=filtered_half["plot_y"],
         mode='markers',
         marker=dict(
             size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
@@ -197,7 +201,6 @@ with tab1:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Player filter and detailed table
     selected_player = st.selectbox("Select Player to View Goals", sorted(filtered_half["player.name"].unique()))
     player_goals = filtered_half[filtered_half["player.name"] == selected_player]
     st.dataframe(player_goals[[
