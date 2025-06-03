@@ -135,31 +135,42 @@ with tab1:
 
     fig = go.Figure()
 
-    # Vertical half pitch right side (from x=60 to x=120), rotated so goal is at top
+    # Pitch size constants for half pitch rotated 90° right:
+    pitch_width = 80  # original pitch width
+    pitch_length = 60  # half pitch length
+
+    # Shapes for rotated pitch (goal at top)
     fig.update_layout(
-        xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
-        yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False),
+        xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
+        yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
         plot_bgcolor='white', height=700,
         shapes=[
-            # Outer half pitch (right side rotated)
-            dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
-            # Penalty area (rotated coordinates)
+            # Outer half pitch (rotated)
+            dict(type="rect", x0=0, y0=0, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+
+            # Penalty area (rotated)
             dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
+
             # Six yard box
             dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
+
             # Goal line (top)
             dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
+
             # Penalty spot
             dict(type="circle", xref="x", yref="y", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
-            # Arc of the penalty area
+
+            # Arc of the penalty area (rotated arc)
             dict(type="path",
                  path="M 18 0 A 20 22 0 0 1 62 0",
                  line=dict(color="black", width=2)),
+
             # Halfway line (bottom)
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
+            dict(type="line", x0=0, y0=pitch_length, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+
             # Center circle (half circle on halfway line)
             dict(type="path",
-                 path="M 30 60 A 20 20 0 0 1 50 60",
+                 path=f"M 30 {pitch_length} A 20 20 0 0 1 50 {pitch_length}",
                  line=dict(color="black", width=2)),
         ]
     )
@@ -167,18 +178,15 @@ with tab1:
     # Filter for right half pitch goals (location_x >= 60)
     filtered_half = filtered[filtered["location_x"] >= 60].copy()
 
-    # Transform coordinates for rotation:
-    # plot_x = location_y (0-80 pitch width)
-    # plot_y = 120 - location_x (flip so goal is at top)
+    # Coordinates rotated to match pitch rotation (goal at top)
+    # Original coords: location_x (60 to 120), location_y (0 to 80)
+    # After rotation:
+    # plot_x = location_y (0 to 80)
+    # plot_y = 120 - location_x (60 to 0)
     filtered_half["plot_x"] = pd.to_numeric(filtered_half["location_y"], errors='coerce')
     filtered_half["plot_y"] = pd.to_numeric(120 - filtered_half["location_x"], errors='coerce')
 
-    # Drop any rows with NaN coords after conversion
     filtered_half = filtered_half.dropna(subset=["plot_x", "plot_y"])
-
-    # Uncomment for debug if points don't show:
-    # st.write(f"Points count: {len(filtered_half)}")
-    # st.write(filtered_half[["plot_x", "plot_y"]].head())
 
     hover_text = (
         "Player: " + filtered_half["player.name"] +
@@ -195,7 +203,7 @@ with tab1:
         mode='markers',
         marker=dict(
             size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
-            color='#e74c3c',  # red for visibility
+            color='#e74c3c',
             line=dict(width=1, color='#2c3e50')
         ),
         hoverinfo='text',
@@ -209,7 +217,6 @@ with tab1:
     st.dataframe(player_goals[[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
-
 
 
 with tab2:
