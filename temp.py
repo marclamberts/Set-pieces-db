@@ -1,1 +1,342 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"pygments_lexer":"ipython3","nbconvert_exporter":"python","version":"3.6.4","file_extension":".py","codemirror_mode":{"name":"ipython","version":3},"name":"python","mimetype":"text/x-python"},"kaggle":{"accelerator":"none","dataSources":[],"isInternetEnabled":true,"language":"python","sourceType":"script","isGpuEnabled":false}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"import streamlit as st\nimport pandas as pd\nimport os\nimport ast\nimport plotly.graph_objects as go\n\n# -------------------- Config --------------------\nst.set_page_config(\n    page_title=\"Set Piece Goals Dashboard\",\n    layout=\"wide\",\n    page_icon=\"⚽\"\n)\n\nPASSWORD = \"PrincessWay2526\"\n\n# Custom CSS for professional styling\nprofessional_style = \"\"\"\n<style>\n    /* Main container */\n    .main {\n        background-color: #f8f9fa;\n    }\n    \n    /* Sidebar */\n    .sidebar .sidebar-content {\n        background-color: #ffffff;\n        box-shadow: 2px 0 10px rgba(0,0,0,0.1);\n    }\n    \n    /* Titles */\n    h1, h2, h3, h4, h5, h6 {\n        color: #2c3e50;\n        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n    }\n    \n    /* Buttons */\n    .stButton>button {\n        background-color: #3498db;\n        color: white;\n        border-radius: 6px;\n        border: none;\n        padding: 8px 16px;\n        font-weight: 500;\n        transition: all 0.3s ease;\n    }\n    \n    .stButton>button:hover {\n        background-color: #2980b9;\n        transform: translateY(-1px);\n        box-shadow: 0 2px 5px rgba(0,0,0,0.2);\n    }\n    \n    /* Tabs */\n    .stTabs [data-baseweb=\"tab-list\"] {\n        gap: 10px;\n    }\n    \n    .stTabs [data-baseweb=\"tab\"] {\n        padding: 10px 20px;\n        border-radius: 8px 8px 0 0;\n        background-color: #ecf0f1;\n        transition: all 0.3s ease;\n    }\n    \n    .stTabs [aria-selected=\"true\"] {\n        background-color: #3498db;\n        color: white;\n    }\n    \n    /* Dataframes */\n    .stDataFrame {\n        border-radius: 8px;\n        box-shadow: 0 2px 10px rgba(0,0,0,0.1);\n    }\n    \n    /* Metrics */\n    [data-testid=\"metric-container\"] {\n        background-color: white;\n        border-radius: 8px;\n        padding: 15px;\n        box-shadow: 0 2px 10px rgba(0,0,0,0.1);\n        border-left: 4px solid #3498db;\n    }\n    \n    /* Input widgets */\n    .stSelectbox, .stSlider, .stTextInput {\n        margin-bottom: 15px;\n    }\n</style>\n\"\"\"\n\n# Apply custom CSS\nst.markdown(professional_style, unsafe_allow_html=True)\n\n# Session state for authentication\nif \"authenticated\" not in st.session_state:\n    st.session_state.authenticated = False\n\nif not st.session_state.authenticated:\n    st.title(\"🔒 Set Piece Analysis Dashboard\")\n    st.markdown(\"---\")\n    col1, col2, col3 = st.columns([1,2,1])\n    with col2:\n        with st.container():\n            st.markdown(\"### Please authenticate to continue\")\n            password = st.text_input(\"Enter password:\", type=\"password\")\n            if st.button(\"Login\"):\n                if password == PASSWORD:\n                    st.session_state.authenticated = True\n                    st.experimental_rerun()\n                else:\n                    st.error(\"Incorrect password\")\n            st.markdown(\"---\")\n            st.caption(\"© 2023 Football Analytics Team\")\n    st.stop()\n\nif st.session_state.authenticated:\n    # -------------------- Data Loading --------------------\n    @st.cache_data\n    def load_data():\n        base_path = os.path.dirname(__file__)\n        df = pd.read_excel(os.path.join(base_path, \"db.xlsx\"))\n        \n        # Clean and standardize country names\n        df[\"competition.country_name\"] = df[\"competition.country_name\"].astype(str).str.strip()\n        \n        # Debug: Check available nations\n        st.session_state.available_nations = sorted(df[\"competition.country_name\"].dropna().unique().tolist())\n        return df\n\n    with st.spinner(\"Loading data...\"):\n        df = load_data()\n\n    def parse_location(loc):\n        try:\n            if isinstance(loc, str):\n                return ast.literal_eval(loc)\n            elif isinstance(loc, (list, tuple)):\n                return loc\n            else:\n                return [None, None, None]\n        except:\n            return [None, None, None]\n\n    loc_df = df['location'].apply(parse_location).apply(pd.Series)\n    loc_df.columns = ['location_x', 'location_y', 'location_z']\n    df = pd.concat([df, loc_df], axis=1).copy()\n\n    # Remove duplicate shots\n    df = df.drop_duplicates(\n        subset=[\n            'location_x', 'location_y', 'shot.statsbomb_xg', \n            'team.name', 'player.name', 'Match', 'shot.body_part.name'\n        ],\n        keep='first'\n    )\n\n    df = df[df[\"location_x\"].notna() & df[\"shot.statsbomb_xg\"].notna()]\n    df_goals = df[(df[\"shot.outcome.name\"] == \"Goal\") & (df[\"location_x\"] >= 60)].copy()\n\n    # -------------------- Dashboard Header --------------------\n    st.title(\"⚽ Set Piece Goals Analysis\")\n    st.markdown(\"\"\"\n        <style>\n            .title-wrapper {\n                display: flex;\n                justify-content: space-between;\n                align-items: center;\n            }\n        </style>\n    \"\"\", unsafe_allow_html=True)\n    \n    st.markdown(\"---\")\n    st.markdown(\"Analyze set piece goals with advanced filtering and visualization capabilities.\")\n\n    # -------------------- Filters --------------------\n    with st.sidebar:\n        st.markdown(\"### 🔍 Filter Options\")\n        st.markdown(\"Customize the data view using the filters below:\")\n        \n        with st.expander(\"⚙️ Filter Settings\", expanded=True):\n            col1, col2 = st.columns(2)\n\n            with col1:\n                filters = {}\n                filters[\"Set Piece Type\"] = st.selectbox(\"Set Piece\", [\"All\"] + sorted(df[\"play_pattern.name\"].dropna().unique().tolist()))\n                filters[\"Team\"] = st.selectbox(\"Team\", [\"All\"] + sorted(df[\"team.name\"].dropna().unique().tolist()))\n                filters[\"Position\"] = st.selectbox(\"Position\", [\"All\"] + sorted(df[\"position.name\"].dropna().unique().tolist()))\n                \n                # Nation filter with cleaned data\n                available_nations = [\"All\"] + st.session_state.available_nations\n                filters[\"Nation\"] = st.selectbox(\"Nation\", available_nations)\n\n            with col2:\n                filters[\"Match\"] = st.selectbox(\"Match\", [\"All\"] + sorted(df[\"Match\"].dropna().unique().tolist()))\n                filters[\"Body Part\"] = st.selectbox(\"Body Part\", [\"All\"] + sorted(df[\"shot.body_part.name\"].dropna().unique().tolist()))\n                filters[\"League\"] = st.selectbox(\"League\", [\"All\"] + sorted(df[\"competition.competition_name\"].dropna().unique().tolist()))\n                filters[\"Season\"] = st.selectbox(\"Season\", [\"All\"] + sorted(df[\"season.season_name\"].dropna().unique().tolist()))\n\n            filters[\"First-Time\"] = st.selectbox(\"First-Time Shot\", [\"All\", \"Yes\", \"No\"])\n            xg_range = st.slider(\"xG Range\", float(df[\"shot.statsbomb_xg\"].min()), float(df[\"shot.statsbomb_xg\"].max()), (0.0, 1.0), 0.01, help=\"Adjust the expected goals range to filter shots\")\n        \n        st.markdown(\"---\")\n        st.markdown(\"**Dashboard Info**\")\n        st.caption(\"Version 1.0 | Last updated: Nov 2023\")\n\n    # -------------------- Apply Filters --------------------\n    filtered = df_goals.copy()\n    for key, col in [\n        (\"Set Piece Type\", \"play_pattern.name\"),\n        (\"Team\", \"team.name\"),\n        (\"Match\", \"Match\"),\n        (\"Position\", \"position.name\"),\n        (\"Body Part\", \"shot.body_part.name\"),\n        (\"Nation\", \"competition.country_name\"),\n        (\"League\", \"competition.competition_name\"),\n        (\"Season\", \"season.season_name\")\n    ]:\n        if filters[key] != \"All\":\n            filtered = filtered[filtered[col] == filters[key]]\n    if filters[\"First-Time\"] != \"All\":\n        filtered = filtered[filtered[\"shot.first_time\"] == (filters[\"First-Time\"] == \"Yes\")]\n    filtered = filtered[filtered[\"shot.statsbomb_xg\"].between(*xg_range)]\n\n    if filtered.empty:\n        st.warning(\"No goals found matching these filters. Please adjust your criteria.\")\n        st.stop()\n\n    # -------------------- Summary Cards --------------------\n    st.subheader(\"📊 Overview Metrics\")\n    col1, col2, col3, col4 = st.columns(4)\n    with col1:\n        st.metric(\"Total Goals\", len(filtered))\n    with col2:\n        st.metric(\"Avg. xG\", f\"{filtered['shot.statsbomb_xg'].mean():.3f}\")\n    with col3:\n        st.metric(\"Top Team\", filtered['team.name'].mode()[0] if not filtered.empty else \"N/A\")\n    with col4:\n        st.metric(\"Most Common Type\", filtered['play_pattern.name'].mode()[0] if not filtered.empty else \"N/A\")\n\n    # -------------------- Tabs --------------------\n    tab1, tab2, tab3 = st.tabs([\"📊 Goal Map\", \"📋 Data Explorer\", \"📈 xG Analysis\"])\n\n    with tab1:\n        st.markdown(\"### 🎯 Goal Locations\")\n        with st.container():\n            fig = go.Figure()\n            fig.update_layout(\n                plot_bgcolor='white',\n                xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),\n                yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),\n                height=600,\n                margin=dict(l=0, r=0, t=30, b=0)\n            )\n            fig.add_trace(go.Scatter(\n                x=filtered[\"location_y\"],\n                y=filtered[\"location_x\"],\n                mode='markers',\n                marker=dict(\n                    size=filtered[\"shot.statsbomb_xg\"] * 40 + 6,\n                    color='#3498db',\n                    line=dict(width=1, color='#2c3e50'),\n                    opacity=0.8\n                ),\n                text=filtered.apply(lambda row: f\"\"\"\n                    <b>Team:</b> {row['team.name']}<br>\n                    <b>Player:</b> {row.get('player.name', 'N/A')}<br>\n                    <b>Body Part:</b> {row['shot.body_part.name']}<br>\n                    <b>Match:</b> {row['Match']}<br>\n                    <b>xG:</b> {row['shot.statsbomb_xg']:.2f}\n                \"\"\", axis=1),\n                hoverinfo='text'\n            ))\n            shapes = [\n                dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='#2c3e50', width=2)),\n                dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='#2c3e50')),\n                dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='#2c3e50')),\n                dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='#7f8c8d', dash='dash'))\n            ]\n            fig.update_layout(shapes=shapes)\n            st.plotly_chart(fig, use_container_width=True)\n\n    with tab2:\n        st.markdown(\"### 🔍 Detailed Data View\")\n        st.dataframe(\n            filtered,\n            column_config={\n                \"team.name\": \"Team\",\n                \"player.name\": \"Player\",\n                \"shot.statsbomb_xg\": st.column_config.NumberColumn(\"xG\", format=\"%.3f\"),\n                \"shot.body_part.name\": \"Body Part\",\n                \"play_pattern.name\": \"Play Pattern\",\n                \"competition.country_name\": \"Nation\",\n                \"competition.competition_name\": \"League\",\n                \"season.season_name\": \"Season\"\n            },\n            hide_index=True,\n            use_container_width=True\n        )\n\n    with tab3:\n        st.markdown(\"### 📉 xG Distribution Analysis\")\n        col1, col2 = st.columns(2)\n        with col1:\n            st.markdown(\"**xG Histogram**\")\n            st.bar_chart(filtered[\"shot.statsbomb_xg\"])\n        with col2:\n            st.markdown(\"**xG by Category**\")\n            category = st.selectbox(\"Group by:\", [\"Team\", \"Body Part\", \"Play Pattern\", \"Position\", \"Nation\", \"League\"])\n            if category == \"Team\":\n                group_col = \"team.name\"\n            elif category == \"Body Part\":\n                group_col = \"shot.body_part.name\"\n            elif category == \"Play Pattern\":\n                group_col = \"play_pattern.name\"\n            elif category == \"Position\":\n                group_col = \"position.name\"\n            elif category == \"Nation\":\n                group_col = \"competition.country_name\"\n            else:\n                group_col = \"competition.competition_name\"\n            \n            xg_by_category = filtered.groupby(group_col)[\"shot.statsbomb_xg\"].mean().sort_values(ascending=False)\n            st.bar_chart(xg_by_category)\n\n    # -------------------- Download --------------------\n    st.markdown(\"---\")\n    st.download_button(\n        label=\"⬇️ Download Filtered Data as CSV\",\n        data=filtered.to_csv(index=False),\n        file_name=\"set_piece_goals_analysis.csv\",\n        mime=\"text/csv\",\n        use_container_width=True\n    )\n\n    # -------------------- Footer --------------------\n    st.markdown(\"---\")\n    st.markdown(\"\"\"\n        <div style=\"text-align: center; padding: 20px;\">\n            <p>© 2023 Football Analytics | Powered by Streamlit</p>\n        </div>\n    \"\"\", unsafe_allow_html=True)","metadata":{"_uuid":"56bf4a8f-08f0-4a46-91cb-38cec9d4d868","_cell_guid":"79500550-e6dd-4c84-95a0-ef233de1ce64","trusted":true,"collapsed":false,"jupyter":{"outputs_hidden":false}},"outputs":[],"execution_count":null}]}
+import streamlit as st
+import pandas as pd
+import os
+import ast
+import plotly.graph_objects as go
+
+# -------------------- Config --------------------
+st.set_page_config(
+    page_title="Set Piece Goals Dashboard",
+    layout="wide",
+    page_icon="⚽"
+)
+
+PASSWORD = "PrincessWay2526"
+
+# Custom CSS for professional styling
+professional_style = """
+<style>
+    /* Main container */
+    .main {
+        background-color: #f8f9fa;
+    }
+    
+    /* Sidebar */
+    .sidebar .sidebar-content {
+        background-color: #ffffff;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Titles */
+    h1, h2, h3, h4, h5, h6 {
+        color: #2c3e50;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Buttons */
+    .stButton>button {
+        background-color: #3498db;
+        color: white;
+        border-radius: 6px;
+        border: none;
+        padding: 8px 16px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        background-color: #2980b9;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px;
+        border-radius: 8px 8px 0 0;
+        background-color: #ecf0f1;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #3498db;
+        color: white;
+    }
+    
+    /* Dataframes */
+    .stDataFrame {
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Metrics */
+    [data-testid="metric-container"] {
+        background-color: white;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid #3498db;
+    }
+    
+    /* Input widgets */
+    .stSelectbox, .stSlider, .stTextInput {
+        margin-bottom: 15px;
+    }
+</style>
+"""
+
+# Apply custom CSS
+st.markdown(professional_style, unsafe_allow_html=True)
+
+# Session state for authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔒 Set Piece Analysis Dashboard")
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        with st.container():
+            st.markdown("### Please authenticate to continue")
+            password = st.text_input("Enter password:", type="password")
+            if st.button("Login"):
+                if password == PASSWORD:
+                    st.session_state.authenticated = True
+                    st.experimental_rerun()
+                else:
+                    st.error("Incorrect password")
+            st.markdown("---")
+            st.caption("© 2023 Football Analytics Team")
+    st.stop()
+
+if st.session_state.authenticated:
+    # -------------------- Data Loading --------------------
+    @st.cache_data
+    def load_data():
+        base_path = os.path.dirname(__file__)
+        df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
+        
+        # Clean and standardize country names
+        df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
+        
+        # Debug: Check available nations
+        st.session_state.available_nations = sorted(df["competition.country_name"].dropna().unique().tolist())
+        return df
+
+    with st.spinner("Loading data..."):
+        df = load_data()
+
+    def parse_location(loc):
+        try:
+            if isinstance(loc, str):
+                return ast.literal_eval(loc)
+            elif isinstance(loc, (list, tuple)):
+                return loc
+            else:
+                return [None, None, None]
+        except:
+            return [None, None, None]
+
+    loc_df = df['location'].apply(parse_location).apply(pd.Series)
+    loc_df.columns = ['location_x', 'location_y', 'location_z']
+    df = pd.concat([df, loc_df], axis=1).copy()
+
+    # Remove duplicate shots
+    df = df.drop_duplicates(
+        subset=[
+            'location_x', 'location_y', 'shot.statsbomb_xg', 
+            'team.name', 'player.name', 'Match', 'shot.body_part.name'
+        ],
+        keep='first'
+    )
+
+    df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()]
+    df_goals = df[(df["shot.outcome.name"] == "Goal") & (df["location_x"] >= 60)].copy()
+
+    # -------------------- Dashboard Header --------------------
+    st.title("⚽ Set Piece Goals Analysis")
+    st.markdown("""
+        <style>
+            .title-wrapper {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("Analyze set piece goals with advanced filtering and visualization capabilities.")
+
+    # -------------------- Filters --------------------
+    with st.sidebar:
+        st.markdown("### 🔍 Filter Options")
+        st.markdown("Customize the data view using the filters below:")
+        
+        with st.expander("⚙️ Filter Settings", expanded=True):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                filters = {}
+                filters["Set Piece Type"] = st.selectbox("Set Piece", ["All"] + sorted(df["play_pattern.name"].dropna().unique().tolist()))
+                filters["Team"] = st.selectbox("Team", ["All"] + sorted(df["team.name"].dropna().unique().tolist()))
+                filters["Position"] = st.selectbox("Position", ["All"] + sorted(df["position.name"].dropna().unique().tolist()))
+                
+                # Nation filter with cleaned data
+                available_nations = ["All"] + st.session_state.available_nations
+                filters["Nation"] = st.selectbox("Nation", available_nations)
+
+            with col2:
+                filters["Match"] = st.selectbox("Match", ["All"] + sorted(df["Match"].dropna().unique().tolist()))
+                filters["Body Part"] = st.selectbox("Body Part", ["All"] + sorted(df["shot.body_part.name"].dropna().unique().tolist()))
+                filters["League"] = st.selectbox("League", ["All"] + sorted(df["competition.competition_name"].dropna().unique().tolist()))
+                filters["Season"] = st.selectbox("Season", ["All"] + sorted(df["season.season_name"].dropna().unique().tolist()))
+
+            filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "Yes", "No"])
+            xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01, help="Adjust the expected goals range to filter shots")
+        
+        st.markdown("---")
+        st.markdown("**Dashboard Info**")
+        st.caption("Version 1.0 | Last updated: Nov 2023")
+
+    # -------------------- Apply Filters --------------------
+    filtered = df_goals.copy()
+    for key, col in [
+        ("Set Piece Type", "play_pattern.name"),
+        ("Team", "team.name"),
+        ("Match", "Match"),
+        ("Position", "position.name"),
+        ("Body Part", "shot.body_part.name"),
+        ("Nation", "competition.country_name"),
+        ("League", "competition.competition_name"),
+        ("Season", "season.season_name")
+    ]:
+        if filters[key] != "All":
+            filtered = filtered[filtered[col] == filters[key]]
+    if filters["First-Time"] != "All":
+        filtered = filtered[filtered["shot.first_time"] == (filters["First-Time"] == "Yes")]
+    filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
+
+    if filtered.empty:
+        st.warning("No goals found matching these filters. Please adjust your criteria.")
+        st.stop()
+
+    # -------------------- Summary Cards --------------------
+    st.subheader("📊 Overview Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Goals", len(filtered))
+    with col2:
+        st.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
+    with col3:
+        st.metric("Top Team", filtered['team.name'].mode()[0] if not filtered.empty else "N/A")
+    with col4:
+        st.metric("Most Common Type", filtered['play_pattern.name'].mode()[0] if not filtered.empty else "N/A")
+
+    # -------------------- Tabs --------------------
+    tab1, tab2, tab3 = st.tabs(["📊 Goal Map", "📋 Data Explorer", "📈 xG Analysis"])
+
+    with tab1:
+        st.markdown("### 🎯 Goal Locations")
+        with st.container():
+            fig = go.Figure()
+            fig.update_layout(
+                plot_bgcolor='white',
+                xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+                yaxis=dict(range=[60, 120], showgrid=False, zeroline=False, visible=False),
+                height=600,
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            fig.add_trace(go.Scatter(
+                x=filtered["location_y"],
+                y=filtered["location_x"],
+                mode='markers',
+                marker=dict(
+                    size=filtered["shot.statsbomb_xg"] * 40 + 6,
+                    color='#3498db',
+                    line=dict(width=1, color='#2c3e50'),
+                    opacity=0.8
+                ),
+                text=filtered.apply(lambda row: f"""
+                    <b>Team:</b> {row['team.name']}<br>
+                    <b>Player:</b> {row.get('player.name', 'N/A')}<br>
+                    <b>Body Part:</b> {row['shot.body_part.name']}<br>
+                    <b>Match:</b> {row['Match']}<br>
+                    <b>xG:</b> {row['shot.statsbomb_xg']:.2f}
+                """, axis=1),
+                hoverinfo='text'
+            ))
+            shapes = [
+                dict(type='rect', x0=0, x1=80, y0=60, y1=120, line=dict(color='#2c3e50', width=2)),
+                dict(type='rect', x0=18, x1=62, y0=96, y1=120, line=dict(color='#2c3e50')),
+                dict(type='rect', x0=30, x1=50, y0=114, y1=120, line=dict(color='#2c3e50')),
+                dict(type='line', x0=40, x1=40, y0=60, y1=120, line=dict(color='#7f8c8d', dash='dash'))
+            ]
+            fig.update_layout(shapes=shapes)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.markdown("### 🔍 Detailed Data View")
+        st.dataframe(
+            filtered,
+            column_config={
+                "team.name": "Team",
+                "player.name": "Player",
+                "shot.statsbomb_xg": st.column_config.NumberColumn("xG", format="%.3f"),
+                "shot.body_part.name": "Body Part",
+                "play_pattern.name": "Play Pattern",
+                "competition.country_name": "Nation",
+                "competition.competition_name": "League",
+                "season.season_name": "Season"
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+    with tab3:
+        st.markdown("### 📉 xG Distribution Analysis")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**xG Histogram**")
+            st.bar_chart(filtered["shot.statsbomb_xg"])
+        with col2:
+            st.markdown("**xG by Category**")
+            category = st.selectbox("Group by:", ["Team", "Body Part", "Play Pattern", "Position", "Nation", "League"])
+            if category == "Team":
+                group_col = "team.name"
+            elif category == "Body Part":
+                group_col = "shot.body_part.name"
+            elif category == "Play Pattern":
+                group_col = "play_pattern.name"
+            elif category == "Position":
+                group_col = "position.name"
+            elif category == "Nation":
+                group_col = "competition.country_name"
+            else:
+                group_col = "competition.competition_name"
+            
+            xg_by_category = filtered.groupby(group_col)["shot.statsbomb_xg"].mean().sort_values(ascending=False)
+            st.bar_chart(xg_by_category)
+
+    # -------------------- Download --------------------
+    st.markdown("---")
+    st.download_button(
+        label="⬇️ Download Filtered Data as CSV",
+        data=filtered.to_csv(index=False),
+        file_name="set_piece_goals_analysis.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+    # -------------------- Footer --------------------
+    st.markdown("---")
+    st.markdown("""
+        <div style="text-align: center; padding: 20px;">
+            <p>© 2023 Football Analytics | Powered by Streamlit</p>
+        </div>
+    """, unsafe_allow_html=True)
