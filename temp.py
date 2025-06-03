@@ -48,7 +48,7 @@ if not st.session_state.authenticated:
         if st.button("Login"):
             if password == PASSWORD:
                 st.session_state.authenticated = True
-                st.experimental_rerun()
+                st.experimental.runtime.rerun()
             else:
                 st.error("Incorrect password")
         st.caption("© 2023 Football Analytics Team")
