@@ -131,7 +131,7 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🌟 Goal Locations on Right Vertical Half Pitch (Goal at Top)")
+    st.markdown("### Goal Locations")
 
     fig = go.Figure()
 
