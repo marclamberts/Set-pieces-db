@@ -430,7 +430,7 @@ with tab5:
         ).sort_values(by='Goals', ascending=False)
         st.write(f"**Grouped by {col}**")
         st.dataframe(group_data)
-)
+
 
 st.download_button("Download CSV", data=filtered.to_csv(index=False), file_name="set_piece_goals.csv")
 
