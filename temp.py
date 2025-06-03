@@ -430,23 +430,7 @@ with tab5:
         ).sort_values(by='Goals', ascending=False)
         st.write(f"**Grouped by {col}**")
         st.dataframe(group_data)
-
-with tab6:
-    st.markdown("### 🔮 Goal Prediction (Logistic Regression)")
-    model_data = df.copy()
-    model_data["is_goal"] = model_data["shot.outcome.name"] == "Goal"
-    model_data = model_data.dropna(subset=["location_x", "location_y", "shot.statsbomb_xg", "is_goal"])
-    X = model_data[["location_x", "location_y", "shot.statsbomb_xg"]]
-    y = model_data["is_goal"].astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = LogisticRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    st.text("🔢 Classification Report")
-    st.text(classification_report(y_test, y_pred))
-    st.text("📉 Confusion Matrix")
-    st.write(confusion_matrix(y_test, y_pred))
-    st.write("✅ Model Coefficients", dict(zip(X.columns, model.coef_[0])))
+)
 
 st.download_button("Download CSV", data=filtered.to_csv(index=False), file_name="set_piece_goals.csv")
 
