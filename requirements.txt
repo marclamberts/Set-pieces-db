@@ -5,3 +5,4 @@ openpyxl
 mplsoccer
 matplotlib
 plotly
+scikit-learn
