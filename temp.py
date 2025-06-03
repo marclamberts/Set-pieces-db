@@ -131,41 +131,46 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🌟 Goal Locations)")
+    st.markdown("### 🌟 Goal Locations on Right Vertical Half Pitch (Goal at Top)")
 
     fig = go.Figure()
 
-    # Pitch size constants for half pitch rotated 90° right:
-    pitch_width = 80  # original pitch width
-    pitch_length = 60  # half pitch length
+    pitch_length = 60  # half pitch length (x from 60 to 120)
+    pitch_width = 80
 
-    # Shapes for rotated pitch (goal at top)
+    # Draw pitch rotated 90 degrees clockwise with goal at top
     fig.update_layout(
         xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
         yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
-        plot_bgcolor='white', height=700,
+        plot_bgcolor='white',
+        height=700,
         shapes=[
-            # Outer half pitch (rotated)
+            # Outer half pitch
             dict(type="rect", x0=0, y0=0, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
 
-            # Penalty area (rotated)
+            # Penalty area (originally x:102-120, y:18-62) rotated:
+            # x0 = 18, y0 = 0, x1 = 62, y1 = 18 (swapped and rotated)
             dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
 
-            # Six yard box
+            # Six yard box (original x:114-120, y:30-50):
+            # Rotated: x0=30, y0=0, x1=50, y1=6
             dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
 
-            # Goal line (top)
+            # Goal line (top) (original x=120, y=30 to 50):
+            # Rotated to top edge: line from x=30 to 50 at y=0
             dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
 
-            # Penalty spot
+            # Penalty spot (original around 108,39):
+            # Rotated to approximately x=39, y=8 (center)
             dict(type="circle", xref="x", yref="y", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
 
-            # Arc of the penalty area (rotated arc)
+            # Penalty arc - rotated 90 degrees clockwise (original arc from 102,18 to 102,62)
             dict(type="path",
                  path="M 18 0 A 20 22 0 0 1 62 0",
                  line=dict(color="black", width=2)),
 
-            # Halfway line (bottom)
+            # Halfway line (bottom) (original x=60, y=0 to 80):
+            # Rotated to bottom edge: line from x=0 to 80 at y=60
             dict(type="line", x0=0, y0=pitch_length, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
 
             # Center circle (half circle on halfway line)
@@ -175,19 +180,16 @@ with tab1:
         ]
     )
 
-    # Filter for right half pitch goals (location_x >= 60)
+    # Filter only goals in right half pitch (x >= 60)
     filtered_half = filtered[filtered["location_x"] >= 60].copy()
 
-    # Coordinates rotated to match pitch rotation (goal at top)
-    # Original coords: location_x (60 to 120), location_y (0 to 80)
-    # After rotation:
-    # plot_x = location_y (0 to 80)
-    # plot_y = 120 - location_x (60 to 0)
-    filtered_half["plot_x"] = pd.to_numeric(filtered_half["location_y"], errors='coerce')
-    filtered_half["plot_y"] = pd.to_numeric(120 - filtered_half["location_x"], errors='coerce')
+    # Transform coordinates for rotation:
+    # x plot = location_y (0 to 80)
+    # y plot = 120 - location_x (so goal at top)
+    filtered_half["plot_x"] = filtered_half["location_y"]
+    filtered_half["plot_y"] = 120 - filtered_half["location_x"]
 
-    filtered_half = filtered_half.dropna(subset=["plot_x", "plot_y"])
-
+    # Prepare hover info
     hover_text = (
         "Player: " + filtered_half["player.name"] +
         "<br>Team: " + filtered_half["team.name"] +
@@ -217,6 +219,7 @@ with tab1:
     st.dataframe(player_goals[[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
+
 
 
 with tab2:
