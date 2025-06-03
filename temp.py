@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 # -------------------- Config --------------------
 st.set_page_config(
-    page_title="Set Piece Goals Dashboard",
+    page_title="Set Piece Dashboard",
     layout="wide",
     page_icon="⚽"
 )
@@ -35,7 +35,7 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔒 Set Piece Analysis Dashboard")
+    st.title("🔒 Set Piece Dashboard")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("### Please authenticate to continue")
@@ -131,7 +131,7 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🌟 Goal Locations on Right Vertical Half Pitch (Goal at Top)")
+    st.markdown("### 🌟 Goal Locations)")
 
     fig = go.Figure()
 
@@ -256,6 +256,6 @@ st.download_button("Download CSV", data=filtered.to_csv(index=False), file_name=
 
 st.markdown("""
     <div style="text-align: center; padding: 20px;">
-        <p>© 2023 Football Analytics | Powered by Streamlit</p>
+        <p>© 2025 Outswinger FC Analytics | Powered by Marc Lamberts</p>
     </div>
 """, unsafe_allow_html=True)
