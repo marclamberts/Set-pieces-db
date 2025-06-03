@@ -46,7 +46,7 @@ if not st.session_state.authenticated:
                 st.experimental_rerun()
             else:
                 st.error("Incorrect password")
-        st.caption("\u00a9 2023 Football Analytics Team")
+        st.caption("© 2023 Football Analytics Team")
     st.stop()
 
 @st.cache_data
@@ -132,12 +132,60 @@ with tab0:
 
 with tab1:
     st.markdown("### 🌟 Goal Locations")
+
     fig = go.Figure()
-    fig.update_layout(plot_bgcolor='white', xaxis=dict(range=[0, 80], visible=False), yaxis=dict(range=[60, 120], visible=False), height=600)
-    fig.add_trace(go.Scatter(x=filtered["location_y"], y=filtered["location_x"], mode='markers',
-                             marker=dict(size=filtered["shot.statsbomb_xg"]*40+6, color='#3498db', line=dict(width=1, color='#2c3e50')),
-                             text=filtered["player.name"], hoverinfo='text'))
+
+    # Draw football pitch
+    fig.update_layout(
+        xaxis=dict(range=[0, 120], showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False),
+        plot_bgcolor='white', height=600,
+        shapes=[
+            # Outer pitch
+            dict(type="rect", x0=0, y0=0, x1=120, y1=80, line=dict(color="black", width=2)),
+            # Penalty area left
+            dict(type="rect", x0=0, y0=18, x1=18, y1=62, line=dict(color="black", width=2)),
+            # Six yard box left
+            dict(type="rect", x0=0, y0=30, x1=6, y1=50, line=dict(color="black", width=2)),
+            # Goal line left
+            dict(type="line", x0=0, y0=30, x1=0, y1=50, line=dict(color="black", width=4)),
+            # Penalty spot left
+            dict(type="circle", xref="x", yref="y", x0=11, y0=38, x1=13, y1=40, line=dict(color="black", width=2)),
+            # Center circle
+            dict(type="circle", xref="x", yref="y", x0=50, y0=30, x1=70, y1=50, line=dict(color="black", width=2)),
+            # Halfway line
+            dict(type="line", x0=60, y0=0, x1=60, y1=80, line=dict(color="black", width=2)),
+        ]
+    )
+
+    hover_text = (
+        "Player: " + filtered["player.name"] +
+        "<br>Team: " + filtered["team.name"] +
+        "<br>xG: " + filtered["shot.statsbomb_xg"].round(2).astype(str) +
+        "<br>Body Part: " + filtered["shot.body_part.name"] +
+        "<br>Match: " + filtered["Match"] +
+        "<br>League: " + filtered["competition.competition_name"]
+    )
+    fig.add_trace(go.Scatter(
+        x=filtered["location_x"],
+        y=filtered["location_y"],
+        mode='markers',
+        marker=dict(
+            size=filtered["shot.statsbomb_xg"] * 40 + 6,
+            color='#3498db',
+            line=dict(width=1, color='#2c3e50')
+        ),
+        hoverinfo='text',
+        text=hover_text
+    ))
     st.plotly_chart(fig, use_container_width=True)
+
+    # Simulated clickable: player selector to view their goals
+    selected_player = st.selectbox("Select Player to View Goals", sorted(filtered["player.name"].unique()))
+    player_goals = filtered[filtered["player.name"] == selected_player]
+    st.dataframe(player_goals[[
+        "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
+    ]])
 
 with tab2:
     st.markdown("### 🔍 Data Table")
