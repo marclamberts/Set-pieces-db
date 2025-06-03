@@ -1,11 +1,16 @@
+# -------------------- Imports & Config --------------------
 import streamlit as st
 import pandas as pd
 import os
 import ast
 import plotly.express as px
 import plotly.graph_objects as go
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# -------------------- Config --------------------
 st.set_page_config(
     page_title="Set Piece Dashboard",
     layout="wide",
@@ -14,7 +19,7 @@ st.set_page_config(
 
 PASSWORD = "PrincessWay2526"
 
-# Custom CSS
+# -------------------- Style --------------------
 professional_style = """
 <style>
     .main { background-color: #f8f9fa; }
@@ -28,9 +33,9 @@ professional_style = """
     [data-testid="metric-container"] { background-color: white; border-radius: 8px; padding: 15px; border-left: 4px solid #3498db; }
 </style>
 """
-
 st.markdown(professional_style, unsafe_allow_html=True)
 
+# -------------------- Authentication --------------------
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -49,6 +54,7 @@ if not st.session_state.authenticated:
         st.caption("© 2023 Football Analytics Team")
     st.stop()
 
+# -------------------- Load Data --------------------
 @st.cache_data
 def load_data():
     base_path = os.path.dirname(__file__)
@@ -57,18 +63,15 @@ def load_data():
     return df
 
 df = load_data()
-
-# Clean and transform
 df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
 loc_df = df['location'].apply(pd.Series)
 loc_df.columns = ['location_x', 'location_y', 'location_z']
 df = pd.concat([df, loc_df], axis=1)
-
 df = df.drop_duplicates(subset=['location_x', 'location_y', 'shot.statsbomb_xg', 'team.name', 'player.name', 'Match', 'shot.body_part.name'])
 df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
 
-# Sidebar Filters
+# -------------------- Sidebar Filters --------------------
 with st.sidebar:
     st.markdown("### 🔍 Filter Options")
     filters = {}
@@ -83,7 +86,7 @@ with st.sidebar:
     filters["First-Time"] = st.selectbox("First-Time Shot", ["All", "Yes", "No"])
     xg_range = st.slider("xG Range", float(df["shot.statsbomb_xg"].min()), float(df["shot.statsbomb_xg"].max()), (0.0, 1.0), 0.01)
 
-# Apply filters
+# -------------------- Apply Filters --------------------
 filtered = df_goals.copy()
 for key, col in [
     ("Set Piece Type", "play_pattern.name"),
@@ -105,7 +108,7 @@ if filtered.empty:
     st.warning("No goals found matching these filters.")
     st.stop()
 
-# Overview
+# -------------------- Metrics --------------------
 st.title("⚽ Set Piece Goals Analysis")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Goals", len(filtered))
@@ -113,9 +116,10 @@ col2.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
 col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
-# Tabs
-tab0, tab1, tab2, tab3 = st.tabs(["General Dashboard", "Goal Map", "Data Explorer", "xG Analysis"])
-
+# -------------------- Tabs --------------------
+tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Summary Report", "Forecasting"
+])
 with tab0:
     st.markdown("### 📊 General Overview")
     col1, col2 = st.columns(2)
@@ -131,96 +135,49 @@ with tab0:
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### Goal Locations")
-
+    st.markdown("### 📍 Goal Locations")
     fig = go.Figure()
-
-    pitch_length = 60  # half pitch length (x from 60 to 120)
-    pitch_width = 80
-
-    # Draw pitch rotated 90 degrees clockwise with goal at top
+    pitch_length, pitch_width = 60, 80
     fig.update_layout(
         xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
         yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
         plot_bgcolor='white',
         height=700,
         shapes=[
-            # Outer half pitch
-            dict(type="rect", x0=0, y0=0, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
-
-            # Penalty area (originally x:102-120, y:18-62) rotated:
-            # x0 = 18, y0 = 0, x1 = 62, y1 = 18 (swapped and rotated)
+            dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
             dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
-
-            # Six yard box (original x:114-120, y:30-50):
-            # Rotated: x0=30, y0=0, x1=50, y1=6
             dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
-
-            # Goal line (top) (original x=120, y=30 to 50):
-            # Rotated to top edge: line from x=30 to 50 at y=0
             dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
-
-            # Penalty spot (original around 108,39):
-            # Rotated to approximately x=39, y=8 (center)
-            dict(type="circle", xref="x", yref="y", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
-
-            # Penalty arc - rotated 90 degrees clockwise (original arc from 102,18 to 102,62)
-            dict(type="path",
-                 path="M 18 0 A 20 22 0 0 1 62 0",
-                 line=dict(color="black", width=2)),
-
-            # Halfway line (bottom) (original x=60, y=0 to 80):
-            # Rotated to bottom edge: line from x=0 to 80 at y=60
-            dict(type="line", x0=0, y0=pitch_length, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
-
-            # Center circle (half circle on halfway line)
-            dict(type="path",
-                 path=f"M 30 {pitch_length} A 20 20 0 0 1 50 {pitch_length}",
-                 line=dict(color="black", width=2)),
+            dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
+            dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
+            dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
         ]
     )
-
-    # Filter only goals in right half pitch (x >= 60)
     filtered_half = filtered[filtered["location_x"] >= 60].copy()
-
-    # Transform coordinates for rotation:
-    # x plot = location_y (0 to 80)
-    # y plot = 120 - location_x (so goal at top)
     filtered_half["plot_x"] = filtered_half["location_y"]
     filtered_half["plot_y"] = 120 - filtered_half["location_x"]
-
-    # Prepare hover info
     hover_text = (
         "Player: " + filtered_half["player.name"] +
         "<br>Team: " + filtered_half["team.name"] +
         "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
         "<br>Body Part: " + filtered_half["shot.body_part.name"] +
-        "<br>Match: " + filtered_half["Match"] +
-        "<br>League: " + filtered_half["competition.competition_name"]
+        "<br>Match: " + filtered_half["Match"]
     )
-
     fig.add_trace(go.Scatter(
         x=filtered_half["plot_x"],
         y=filtered_half["plot_y"],
         mode='markers',
-        marker=dict(
-            size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
-            color='#e74c3c',
-            line=dict(width=1, color='#2c3e50')
-        ),
-        hoverinfo='text',
-        text=hover_text
+        marker=dict(size=filtered_half["shot.statsbomb_xg"] * 40 + 6, color='#e74c3c', line=dict(width=1, color='#2c3e50')),
+        text=hover_text,
+        hoverinfo='text'
     ))
-
     st.plotly_chart(fig, use_container_width=True)
 
-    selected_player = st.selectbox("Select Player to View Goals", sorted(filtered_half["player.name"].unique()))
-    player_goals = filtered_half[filtered_half["player.name"] == selected_player]
-    st.dataframe(player_goals[[
+    selected_player = st.selectbox("Select Player", sorted(filtered_half["player.name"].unique()))
+    st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
-
-
 
 with tab2:
     st.markdown("### 🔍 Data Table")
@@ -229,23 +186,18 @@ with tab2:
 with tab3:
     st.markdown("### 📊 xG & Timeline Visualizations")
     chart_type = st.selectbox("Choose Chart Type", ["xG Histogram", "Box Plot", "xG by Category", "Scatter Plot", "Goals Over Time"])
-
     if chart_type == "xG Histogram":
         st.bar_chart(filtered["shot.statsbomb_xg"])
-
     elif chart_type == "Box Plot":
         st.plotly_chart(px.box(filtered, y="shot.statsbomb_xg", points="all"), use_container_width=True)
-
     elif chart_type == "xG by Category":
         category = st.selectbox("Group xG by:", ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"])
         data = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False).reset_index()
         fig_bar = px.bar(data, x=category, y="shot.statsbomb_xg", text="shot.statsbomb_xg")
         st.plotly_chart(fig_bar, use_container_width=True)
-
     elif chart_type == "Scatter Plot":
         fig = px.scatter(filtered, x="location_x", y="location_y", size="shot.statsbomb_xg", color="team.name", hover_name="player.name")
         st.plotly_chart(fig, use_container_width=True)
-
     elif chart_type == "Goals Over Time":
         if "date" in filtered.columns:
             filtered["match_date"] = pd.to_datetime(filtered["date"], errors="coerce")
@@ -254,6 +206,46 @@ with tab3:
             xg_by_date = filtered.groupby("match_date")["shot.statsbomb_xg"].mean().reset_index(name="Avg_xG")
             st.plotly_chart(px.line(goals_by_date, x="match_date", y="Goals", markers=True), use_container_width=True)
             st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
+with tab4:
+    st.markdown("### 🥅 Goal Height Placement (if available)")
+    if filtered['location_z'].notna().sum() > 0:
+        fig = px.histogram(filtered, x="location_z", nbins=15, title="Goal Height Distribution")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(filtered[["player.name", "team.name", "location_z", "shot.statsbomb_xg"]])
+    else:
+        st.info("No location_z (height) data available.")
+
+with tab5:
+    st.markdown("### 📑 Summary Report")
+    st.write("#### 🔢 Basic Stats")
+    st.write(filtered.describe(include='all'))
+
+    st.write("#### 💡 Grouped Stats")
+    cols_to_group = ["team.name", "shot.body_part.name", "play_pattern.name"]
+    for col in cols_to_group:
+        group_data = filtered.groupby(col).agg(
+            Goals=('player.name', 'count'),
+            Avg_xG=('shot.statsbomb_xg', 'mean')
+        ).sort_values(by='Goals', ascending=False)
+        st.write(f"**Grouped by {col}**")
+        st.dataframe(group_data)
+
+with tab6:
+    st.markdown("### 🔮 Goal Prediction (Logistic Regression)")
+    model_data = df.copy()
+    model_data["is_goal"] = model_data["shot.outcome.name"] == "Goal"
+    model_data = model_data.dropna(subset=["location_x", "location_y", "shot.statsbomb_xg", "is_goal"])
+    X = model_data[["location_x", "location_y", "shot.statsbomb_xg"]]
+    y = model_data["is_goal"].astype(int)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    model = LogisticRegression()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    st.text("🔢 Classification Report")
+    st.text(classification_report(y_test, y_pred))
+    st.text("📉 Confusion Matrix")
+    st.write(confusion_matrix(y_test, y_pred))
+    st.write("✅ Model Coefficients", dict(zip(X.columns, model.coef_[0])))
 
 st.download_button("Download CSV", data=filtered.to_csv(index=False), file_name="set_piece_goals.csv")
 
