@@ -53,7 +53,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # -------------------- Load Data --------------------
-@st.cache_data
+@st.cache_data(ttl=3600)  # Cache for 1 hour (adjust as needed)
 def load_data():
     base_path = os.path.dirname(__file__)
     df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
