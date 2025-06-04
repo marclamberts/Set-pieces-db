@@ -301,6 +301,93 @@ col2.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
 col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import os
+import ast
+
+# -------------------- Data Loading --------------------
+@st.cache_data(ttl=3600)
+def load_data():
+    try:
+        base_path = os.path.dirname(__file__)
+        file_path = os.path.join(base_path, "db.xlsx")
+        
+        if not os.path.exists(file_path):
+            st.error(f"File not found at: {file_path}")
+            return pd.DataFrame()
+        
+        df = pd.read_excel(file_path)
+        
+        # Data cleaning
+        df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
+        df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
+        df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
+        
+        def parse_location(x):
+            try:
+                return ast.literal_eval(x) if isinstance(x, str) else [None, None, None]
+            except (ValueError, SyntaxError):
+                return [None, None, None]
+        
+        df['location'] = df['location'].apply(parse_location)
+        loc_df = df['location'].apply(pd.Series)
+        loc_df.columns = ['location_x', 'location_y', 'location_z']
+        df = pd.concat([df, loc_df], axis=1)
+        
+        return df
+    
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return pd.DataFrame()
+
+df = load_data()
+
+# -------------------- Data Processing --------------------
+if not df.empty:
+    df = df.drop_duplicates(subset=['location_x', 'location_y', 'shot.statsbomb_xg', 
+                                   'team.name', 'player.name', 'Match', 'shot.body_part.name'])
+    df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
+    df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
+
+# -------------------- Sidebar Filters --------------------
+st.sidebar.header("🔍 Filter Options")
+all_competitions = df['competition.competition_name'].unique() if not df.empty else []
+selected_competitions = st.sidebar.multiselect(
+    "Select Competitions",
+    options=all_competitions,
+    default=all_competitions,
+    key="competition_filter"
+)
+
+all_teams = df['team.name'].unique() if not df.empty else []
+selected_teams = st.sidebar.multiselect(
+    "Select Teams",
+    options=all_teams,
+    default=all_teams,
+    key="team_filter"
+)
+
+all_players = df['player.name'].unique() if not df.empty else []
+selected_players = st.sidebar.multiselect(
+    "Select Players",
+    options=all_players,
+    default=all_players,
+    key="player_filter"
+)
+
+# Apply filters
+filtered = df.copy()
+if not df.empty:
+    if selected_competitions:
+        filtered = filtered[filtered['competition.competition_name'].isin(selected_competitions)]
+    if selected_teams:
+        filtered = filtered[filtered['team.name'].isin(selected_teams)]
+    if selected_players:
+        filtered = filtered[filtered['player.name'].isin(selected_players)]
+
 # -------------------- Tabs --------------------
 tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Summary Report"
@@ -319,8 +406,6 @@ with tab0:
                              color="Goals", text="Goals",
                              title="Goals by Team")
             st.plotly_chart(fig_team, use_container_width=True)
-        else:
-            st.warning("No team data available")
     
     with col2:
         if not filtered.empty and "play_pattern.name" in filtered.columns:
@@ -330,19 +415,15 @@ with tab0:
                              color="Goals", text="Goals",
                              title="Goals by Set Piece Type")
             st.plotly_chart(fig_type, use_container_width=True)
-        else:
-            st.warning("No set piece data available")
 
 # Tab 1: Goal Map
 with tab1:
     st.markdown("### 📍 Goal Locations")
     
     if not filtered.empty and all(col in filtered.columns for col in ["location_x", "location_y"]):
-        # Create pitch visualization
         fig = go.Figure()
         pitch_length, pitch_width = 60, 80
         
-        # Pitch markings
         fig.update_layout(
             xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
             yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
@@ -360,12 +441,10 @@ with tab1:
             ]
         )
         
-        # Filter and transform coordinates
         filtered_half = filtered[filtered["location_x"] >= 60].copy()
         filtered_half["plot_x"] = filtered_half["location_y"]
         filtered_half["plot_y"] = 120 - filtered_half["location_x"]
         
-        # Create hover text
         hover_text = (
             "Player: " + filtered_half["player.name"].fillna("Unknown") +
             "<br>Team: " + filtered_half["team.name"].fillna("Unknown") +
@@ -374,7 +453,6 @@ with tab1:
             "<br>Match: " + filtered_half["Match"].fillna("Unknown")
         )
         
-        # Add scatter plot
         fig.add_trace(go.Scatter(
             x=filtered_half["plot_x"],
             y=filtered_half["plot_y"],
@@ -390,27 +468,22 @@ with tab1:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Player selector
         if not filtered_half.empty:
             selected_player = st.selectbox(
                 "Select Player",
                 sorted(filtered_half["player.name"].unique()),
-                key="player_selector"
+                key="goal_map_player_selector"
             )
             st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
                 "player.name", "team.name", "shot.statsbomb_xg", 
                 "shot.body_part.name", "Match", "competition.competition_name"
             ]])
-    else:
-        st.error("Required location data not available")
 
 # Tab 2: Data Explorer
 with tab2:
     st.markdown("### 🔍 Data Table")
     if not filtered.empty:
         st.dataframe(filtered, use_container_width=True)
-    else:
-        st.warning("No data available")
 
 # Tab 3: xG Analysis
 with tab3:
@@ -420,7 +493,7 @@ with tab3:
         chart_type = st.selectbox(
             "Choose Chart Type", 
             ["xG Histogram", "Box Plot", "xG by Category", "Scatter Plot", "Goals Over Time"],
-            key="xg_chart_type"
+            key="xg_chart_type_selector"
         )
         
         if chart_type == "xG Histogram":
@@ -437,7 +510,7 @@ with tab3:
             category = st.selectbox(
                 "Group xG by:", 
                 ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"],
-                key="xg_category"
+                key="xg_category_selector"
             )
             if category in filtered.columns:
                 data = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False).reset_index()
@@ -445,8 +518,6 @@ with tab3:
                                 text="shot.statsbomb_xg",
                                 title=f"Average xG by {category}")
                 st.plotly_chart(fig_bar, use_container_width=True)
-            else:
-                st.warning(f"Column {category} not found in data")
                 
         elif chart_type == "Scatter Plot":
             if all(col in filtered.columns for col in ["location_x", "location_y"]):
@@ -460,8 +531,6 @@ with tab3:
                     title="Shot Locations Colored by xG"
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.error("Location data missing for scatter plot")
                 
         elif chart_type == "Goals Over Time":
             if "date" in filtered.columns:
@@ -481,10 +550,6 @@ with tab3:
                            markers=True, title="Average xG Over Time"),
                     use_container_width=True
                 )
-            else:
-                st.warning("Date column not available for timeline analysis")
-    else:
-        st.error("xG data not available")
 
 # Tab 4: Goal Placement
 with tab4:
@@ -502,10 +567,6 @@ with tab4:
             st.plotly_chart(fig, use_container_width=True)
             
             st.dataframe(filtered[["player.name", "team.name", "location_z", "shot.statsbomb_xg"]])
-        else:
-            st.info("No height data available for goals")
-    else:
-        st.warning("Height data column not found")
 
 # Tab 5: Summary Report
 with tab5:
@@ -527,10 +588,6 @@ with tab5:
                 
                 st.write(f"**Grouped by {col}**")
                 st.dataframe(group_data.style.format({"Avg_xG": "{:.2f}"}))
-            else:
-                st.warning(f"Column {col} not found for grouping")
-    else:
-        st.warning("No data available for summary")
 
 # Download button
 if not filtered.empty:
@@ -538,7 +595,8 @@ if not filtered.empty:
         "Download CSV", 
         data=filtered.to_csv(index=False), 
         file_name="set_piece_goals.csv",
-        mime="text/csv"
+        mime="text/csv",
+        key="download_button"
     )
 
 # Footer
