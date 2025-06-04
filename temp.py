@@ -305,119 +305,243 @@ col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Summary Report"
 ])
+
+# Tab 0: General Dashboard
 with tab0:
     st.markdown("### 📊 General Overview")
     col1, col2 = st.columns(2)
+    
     with col1:
-        team_counts = filtered["team.name"].value_counts().reset_index()
-        team_counts.columns = ["Team", "Goals"]
-        fig_team = px.bar(team_counts, x="Team", y="Goals", color="Goals", text="Goals")
-        st.plotly_chart(fig_team, use_container_width=True)
+        if not filtered.empty and "team.name" in filtered.columns:
+            team_counts = filtered["team.name"].value_counts().reset_index()
+            team_counts.columns = ["Team", "Goals"]
+            fig_team = px.bar(team_counts, x="Team", y="Goals", 
+                             color="Goals", text="Goals",
+                             title="Goals by Team")
+            st.plotly_chart(fig_team, use_container_width=True)
+        else:
+            st.warning("No team data available")
+    
     with col2:
-        type_counts = filtered["play_pattern.name"].value_counts().reset_index()
-        type_counts.columns = ["Set Piece Type", "Goals"]
-        fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals", color="Goals", text="Goals")
-        st.plotly_chart(fig_type, use_container_width=True)
+        if not filtered.empty and "play_pattern.name" in filtered.columns:
+            type_counts = filtered["play_pattern.name"].value_counts().reset_index()
+            type_counts.columns = ["Set Piece Type", "Goals"]
+            fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals",
+                             color="Goals", text="Goals",
+                             title="Goals by Set Piece Type")
+            st.plotly_chart(fig_type, use_container_width=True)
+        else:
+            st.warning("No set piece data available")
 
+# Tab 1: Goal Map
 with tab1:
     st.markdown("### 📍 Goal Locations")
-    fig = go.Figure()
-    pitch_length, pitch_width = 60, 80
-    fig.update_layout(
-        xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
-        yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
-        plot_bgcolor='white',
-        height=700,
-        shapes=[
-            dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
-            dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
-            dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
-            dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
-            dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
-            dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
-            dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
-        ]
-    )
-    filtered_half = filtered[filtered["location_x"] >= 60].copy()
-    filtered_half["plot_x"] = filtered_half["location_y"]
-    filtered_half["plot_y"] = 120 - filtered_half["location_x"]
-    hover_text = (
-        "Player: " + filtered_half["player.name"] +
-        "<br>Team: " + filtered_half["team.name"] +
-        "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
-        "<br>Body Part: " + filtered_half["shot.body_part.name"] +
-        "<br>Match: " + filtered_half["Match"]
-    )
-    fig.add_trace(go.Scatter(
-        x=filtered_half["plot_x"],
-        y=filtered_half["plot_y"],
-        mode='markers',
-        marker=dict(size=filtered_half["shot.statsbomb_xg"] * 40 + 6, color='#e74c3c', line=dict(width=1, color='#2c3e50')),
-        text=hover_text,
-        hoverinfo='text'
-    ))
-    st.plotly_chart(fig, use_container_width=True)
+    
+    if not filtered.empty and all(col in filtered.columns for col in ["location_x", "location_y"]):
+        # Create pitch visualization
+        fig = go.Figure()
+        pitch_length, pitch_width = 60, 80
+        
+        # Pitch markings
+        fig.update_layout(
+            xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
+            yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
+            plot_bgcolor='white',
+            height=700,
+            shapes=[
+                dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
+                dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
+                dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
+                dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
+                dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
+                dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
+                dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
+                dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
+            ]
+        )
+        
+        # Filter and transform coordinates
+        filtered_half = filtered[filtered["location_x"] >= 60].copy()
+        filtered_half["plot_x"] = filtered_half["location_y"]
+        filtered_half["plot_y"] = 120 - filtered_half["location_x"]
+        
+        # Create hover text
+        hover_text = (
+            "Player: " + filtered_half["player.name"].fillna("Unknown") +
+            "<br>Team: " + filtered_half["team.name"].fillna("Unknown") +
+            "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
+            "<br>Body Part: " + filtered_half["shot.body_part.name"].fillna("Unknown") +
+            "<br>Match: " + filtered_half["Match"].fillna("Unknown")
+        )
+        
+        # Add scatter plot
+        fig.add_trace(go.Scatter(
+            x=filtered_half["plot_x"],
+            y=filtered_half["plot_y"],
+            mode='markers',
+            marker=dict(
+                size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
+                color='#e74c3c',
+                line=dict(width=1, color='#2c3e50')
+            ),
+            text=hover_text,
+            hoverinfo='text'
+        ))
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Player selector
+        if not filtered_half.empty:
+            selected_player = st.selectbox(
+                "Select Player",
+                sorted(filtered_half["player.name"].unique()),
+                key="player_selector"
+            )
+            st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
+                "player.name", "team.name", "shot.statsbomb_xg", 
+                "shot.body_part.name", "Match", "competition.competition_name"
+            ]])
+    else:
+        st.error("Required location data not available")
 
-    selected_player = st.selectbox("Select Player", sorted(filtered_half["player.name"].unique()))
-    st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
-        "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
-    ]])
-
+# Tab 2: Data Explorer
 with tab2:
     st.markdown("### 🔍 Data Table")
-    st.dataframe(filtered, use_container_width=True)
+    if not filtered.empty:
+        st.dataframe(filtered, use_container_width=True)
+    else:
+        st.warning("No data available")
 
+# Tab 3: xG Analysis
 with tab3:
     st.markdown("### 📊 xG & Timeline Visualizations")
-    chart_type = st.selectbox("Choose Chart Type", ["xG Histogram", "Box Plot", "xG by Category", "Scatter Plot", "Goals Over Time"])
-    if chart_type == "xG Histogram":
-        st.bar_chart(filtered["shot.statsbomb_xg"])
-    elif chart_type == "Box Plot":
-        st.plotly_chart(px.box(filtered, y="shot.statsbomb_xg", points="all"), use_container_width=True)
-    elif chart_type == "xG by Category":
-        category = st.selectbox("Group xG by:", ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"])
-        data = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False).reset_index()
-        fig_bar = px.bar(data, x=category, y="shot.statsbomb_xg", text="shot.statsbomb_xg")
-        st.plotly_chart(fig_bar, use_container_width=True)
-    elif chart_type == "Scatter Plot":
-        fig = px.scatter(filtered, x="location_x", y="location_y", size="shot.statsbomb_xg", color="team.name", hover_name="player.name")
-        st.plotly_chart(fig, use_container_width=True)
-    elif chart_type == "Goals Over Time":
-        if "date" in filtered.columns:
-            filtered["match_date"] = pd.to_datetime(filtered["date"], errors="coerce")
-            filtered = filtered[filtered["match_date"].notna()]
-            goals_by_date = filtered.groupby("match_date").size().reset_index(name="Goals")
-            xg_by_date = filtered.groupby("match_date")["shot.statsbomb_xg"].mean().reset_index(name="Avg_xG")
-            st.plotly_chart(px.line(goals_by_date, x="match_date", y="Goals", markers=True), use_container_width=True)
-            st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
-with tab4:
-    st.markdown("### 🥅 Goal Height Placement (if available)")
-    if filtered['location_z'].notna().sum() > 0:
-        fig = px.histogram(filtered, x="location_z", nbins=15, title="Goal Height Distribution")
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(filtered[["player.name", "team.name", "location_z", "shot.statsbomb_xg"]])
+    
+    if not filtered.empty and "shot.statsbomb_xg" in filtered.columns:
+        chart_type = st.selectbox(
+            "Choose Chart Type", 
+            ["xG Histogram", "Box Plot", "xG by Category", "Scatter Plot", "Goals Over Time"],
+            key="xg_chart_type"
+        )
+        
+        if chart_type == "xG Histogram":
+            fig = px.histogram(filtered, x="shot.statsbomb_xg", nbins=20, 
+                             title="Distribution of Expected Goals (xG)")
+            st.plotly_chart(fig, use_container_width=True)
+            
+        elif chart_type == "Box Plot":
+            fig = px.box(filtered, y="shot.statsbomb_xg", points="all",
+                        title="xG Distribution")
+            st.plotly_chart(fig, use_container_width=True)
+            
+        elif chart_type == "xG by Category":
+            category = st.selectbox(
+                "Group xG by:", 
+                ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"],
+                key="xg_category"
+            )
+            if category in filtered.columns:
+                data = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False).reset_index()
+                fig_bar = px.bar(data, x=category, y="shot.statsbomb_xg", 
+                                text="shot.statsbomb_xg",
+                                title=f"Average xG by {category}")
+                st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.warning(f"Column {category} not found in data")
+                
+        elif chart_type == "Scatter Plot":
+            if all(col in filtered.columns for col in ["location_x", "location_y"]):
+                fig = px.scatter(
+                    filtered, 
+                    x="location_x", 
+                    y="location_y", 
+                    size="shot.statsbomb_xg",
+                    color="team.name", 
+                    hover_name="player.name",
+                    title="Shot Locations Colored by xG"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.error("Location data missing for scatter plot")
+                
+        elif chart_type == "Goals Over Time":
+            if "date" in filtered.columns:
+                filtered["match_date"] = pd.to_datetime(filtered["date"], errors="coerce")
+                filtered = filtered[filtered["match_date"].notna()]
+                
+                goals_by_date = filtered.groupby("match_date").size().reset_index(name="Goals")
+                xg_by_date = filtered.groupby("match_date")["shot.statsbomb_xg"].mean().reset_index(name="Avg_xG")
+                
+                st.plotly_chart(
+                    px.line(goals_by_date, x="match_date", y="Goals", 
+                           markers=True, title="Goals Over Time"),
+                    use_container_width=True
+                )
+                st.plotly_chart(
+                    px.line(xg_by_date, x="match_date", y="Avg_xG", 
+                           markers=True, title="Average xG Over Time"),
+                    use_container_width=True
+                )
+            else:
+                st.warning("Date column not available for timeline analysis")
     else:
-        st.info("No location_z (height) data available.")
+        st.error("xG data not available")
 
+# Tab 4: Goal Placement
+with tab4:
+    st.markdown("### 🥅 Goal Height Placement")
+    
+    if not filtered.empty and "location_z" in filtered.columns:
+        if filtered['location_z'].notna().sum() > 0:
+            fig = px.histogram(
+                filtered, 
+                x="location_z", 
+                nbins=15, 
+                title="Goal Height Distribution",
+                labels={"location_z": "Height (units)"}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.dataframe(filtered[["player.name", "team.name", "location_z", "shot.statsbomb_xg"]])
+        else:
+            st.info("No height data available for goals")
+    else:
+        st.warning("Height data column not found")
+
+# Tab 5: Summary Report
 with tab5:
     st.markdown("### 📑 Summary Report")
-    st.write("#### 🔢 Basic Stats")
-    st.write(filtered.describe(include='all'))
+    
+    if not filtered.empty:
+        st.write("#### 🔢 Basic Stats")
+        st.dataframe(filtered.describe(include='all'))
+        
+        st.write("#### 💡 Grouped Stats")
+        cols_to_group = ["team.name", "shot.body_part.name", "play_pattern.name"]
+        
+        for col in cols_to_group:
+            if col in filtered.columns:
+                group_data = filtered.groupby(col).agg(
+                    Goals=('player.name', 'count'),
+                    Avg_xG=('shot.statsbomb_xg', 'mean')
+                ).sort_values(by='Goals', ascending=False)
+                
+                st.write(f"**Grouped by {col}**")
+                st.dataframe(group_data.style.format({"Avg_xG": "{:.2f}"}))
+            else:
+                st.warning(f"Column {col} not found for grouping")
+    else:
+        st.warning("No data available for summary")
 
-    st.write("#### 💡 Grouped Stats")
-    cols_to_group = ["team.name", "shot.body_part.name", "play_pattern.name"]
-    for col in cols_to_group:
-        group_data = filtered.groupby(col).agg(
-            Goals=('player.name', 'count'),
-            Avg_xG=('shot.statsbomb_xg', 'mean')
-        ).sort_values(by='Goals', ascending=False)
-        st.write(f"**Grouped by {col}**")
-        st.dataframe(group_data)
+# Download button
+if not filtered.empty:
+    st.download_button(
+        "Download CSV", 
+        data=filtered.to_csv(index=False), 
+        file_name="set_piece_goals.csv",
+        mime="text/csv"
+    )
 
-
-st.download_button("Download CSV", data=filtered.to_csv(index=False), file_name="set_piece_goals.csv")
-
+# Footer
 st.markdown("""
     <div style="text-align: center; padding: 20px;">
         <p>© 2025 Outswinger FC Analytics | Powered by Marc Lamberts</p>
