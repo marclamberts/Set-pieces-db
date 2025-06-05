@@ -252,73 +252,78 @@ with tab3:
             st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
 
 with tab4:
-    st.markdown("### 🥅 Shot Placement in the Goal (Width × Height)")
+    st.markdown("### 🥅 Shot Placement on the Goal Face (Width × Height)")
 
     import plotly.graph_objects as go
 
-    # Constants
-    GOAL_WIDTH = 7.32  # meters
-    GOAL_HEIGHT = 2.44  # meters
+    # Constants for goal size
+    GOAL_WIDTH = 7.32  # meters (goal posts width)
+    GOAL_HEIGHT = 2.44  # meters (goal crossbar height)
     LEFT_POST_Y = 36.8
     RIGHT_POST_Y = 43.2
 
-    # Filter shots with valid location_y and location_z
-    goal_shots = filtered.dropna(subset=['location_y', 'location_z']).copy()
+    # Filter shots with location_y and location_z, near the goal line (x close to 120)
+    goal_shots = filtered.dropna(subset=['location_x', 'location_y', 'location_z']).copy()
+    goal_shots = goal_shots[(goal_shots['location_x'] >= 119) & (goal_shots['location_y'] >= LEFT_POST_Y) & (goal_shots['location_y'] <= RIGHT_POST_Y)]
 
     if goal_shots.empty:
-        st.info("No shots with both `location_y` (width) and `location_z` (height) available.")
+        st.info("No shots with complete location data near the goal line.")
     else:
-        # Map location_y from StatsBomb's 36.8–43.2 to 0–7.32m goal width
-        goal_shots['goal_x'] = (goal_shots['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-        goal_shots['goal_y'] = goal_shots['location_z']  # Already in meters
+        # Map location_y from StatsBomb pitch coords to goal width in meters (0 to 7.32)
+        goal_shots['goal_width_m'] = (goal_shots['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
 
-        # Create goal figure
+        # location_z is already height in meters
+        goal_shots['goal_height_m'] = goal_shots['location_z']
+
+        # Plotting the goal frame and shots
         fig = go.Figure()
 
-        # Draw the goal frame
-        fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
-                      line=dict(color="black", width=3))
+        # Draw the goal rectangle
+        fig.add_shape(
+            type="rect",
+            x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
+            line=dict(color="black", width=3),
+            fillcolor="rgba(0,0,0,0)"
+        )
 
-        # Draw horizontal line (split top/bottom)
-        fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT / 2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT / 2,
-                      line=dict(color="gray", dash="dash"))
-
-        # Draw vertical lines (split left/center/right)
+        # Draw goal zones: 3 vertical, 2 horizontal divisions (6 zones)
         for i in range(1, 3):
-            x = i * (GOAL_WIDTH / 3)
-            fig.add_shape(type="line", x0=x, y0=0, x1=x, y1=GOAL_HEIGHT,
+            # horizontal division
+            fig.add_shape(type="line", x0=0, y0=i*GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=i*GOAL_HEIGHT/2,
+                          line=dict(color="gray", dash="dash"))
+        for j in range(1, 3):
+            # vertical division
+            fig.add_shape(type="line", x0=j*GOAL_WIDTH/3, y0=0, x1=j*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                           line=dict(color="gray", dash="dash"))
 
-        # Plot shots
+        # Add shots scatter
         fig.add_trace(go.Scatter(
-            x=goal_shots['goal_x'],
-            y=goal_shots['goal_y'],
+            x=goal_shots['goal_width_m'],
+            y=goal_shots['goal_height_m'],
             mode='markers',
-            marker=dict(size=8, color='red', opacity=0.8),
+            marker=dict(size=8, color='red', opacity=0.7),
             text=goal_shots['player.name'],
-            hovertemplate=(
-                "%{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m"
-            ),
+            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
             name="Shots"
         ))
 
-        # Layout
+        # Layout settings
         fig.update_layout(
-            title="Shot Placement in Goal (location_y vs location_z)",
-            xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False),
-            yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False),
+            title="Shot Placement on Goal (Width x Height)",
+            xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], zeroline=False, showgrid=False),
+            yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], zeroline=False, showgrid=False),
             height=500,
             width=700,
             plot_bgcolor='white'
         )
 
-        # Show chart
         st.plotly_chart(fig, use_container_width=True)
 
-        # Show table
+        # Show shot info table
         st.dataframe(goal_shots[[
-            "player.name", "team.name", "location_y", "location_z", "shot.statsbomb_xg"
+            "player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"
         ]])
+
 
 with tab5:
     st.markdown("### 📑 Summary Report")
