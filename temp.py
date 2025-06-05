@@ -254,6 +254,7 @@ with tab3:
 with tab4:
     import pandas as pd
     import plotly.graph_objects as go
+    import numpy as np
 
     GOAL_WIDTH = 7.32
     GOAL_HEIGHT = 2.44
@@ -262,7 +263,6 @@ with tab4:
 
     st.markdown("### 🥅 Goal Placement from shot.end_location string (6 Zones, Player POV)")
 
-    # Split shot.end_location string into 3 columns
     def split_end_location(s):
         try:
             x_str, y_str, z_str = s.split(',')
@@ -274,7 +274,6 @@ with tab4:
         lambda s: pd.Series(split_end_location(s))
     )
 
-    # Filter valid goals inside goalposts range
     goals = filtered.dropna(subset=['shot.end_location_y']).copy()
     goals = goals[(goals['shot.end_location_y'] >= LEFT_POST_Y) & (goals['shot.end_location_y'] <= RIGHT_POST_Y)]
 
@@ -283,6 +282,13 @@ with tab4:
     else:
         goals['goal_x_m'] = (goals['shot.end_location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
         goals['goal_z_m'] = goals['shot.end_location_z'].fillna(0)
+
+        # Normalize xG for marker size and color
+        xg = goals['shot.statsbomb_xg'].fillna(0)
+        # Marker size scaled between 6 and 20
+        marker_size = np.interp(xg, (xg.min(), xg.max()), (6, 20))
+        # Color scale - use xG directly for color
+        marker_color = xg
 
         fig = go.Figure()
 
@@ -300,19 +306,31 @@ with tab4:
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
 
-        # Shots scatter
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
             mode='markers',
-            marker=dict(size=8, color='green', opacity=0.7),
+            marker=dict(
+                size=marker_size,
+                color=marker_color,
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="xG"),
+                line=dict(width=1, color='DarkSlateGrey'),
+                opacity=0.8
+            ),
             text=goals['player.name'],
-            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
+            hovertemplate=(
+                "Player: %{text}<br>"
+                "Width: %{x:.2f} m<br>"
+                "Height: %{y:.2f} m<br>"
+                "xG: %{marker.color:.3f}<extra></extra>"
+            ),
             name="Goals"
         ))
 
         fig.update_layout(
-            title="Goal Placement on Goal Face from shot.end_location string",
+            title="Goal Placement on Goal Face from shot.end_location string (Size & Color by xG)",
             xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
             yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
             height=600,
@@ -327,6 +345,7 @@ with tab4:
         st.dataframe(goals[[
             "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
         ]])
+
 
 
 with tab5:
