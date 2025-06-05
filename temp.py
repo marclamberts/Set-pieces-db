@@ -251,34 +251,38 @@ with tab3:
             st.plotly_chart(px.line(goals_by_date, x="match_date", y="Goals", markers=True), use_container_width=True)
             st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
 
-with tab4:
-    st.markdown("### 🥅 Goal Placement on Goal Face (Width × Height)")
+import streamlit as st
+import plotly.graph_objects as go
 
-    import plotly.graph_objects as go
+GOAL_WIDTH = 7.32
+GOAL_HEIGHT = 2.44
+LEFT_POST_Y = 35   # widened from 36.8
+RIGHT_POST_Y = 45  # widened from 43.2
 
-    GOAL_WIDTH = 7.32
-    GOAL_HEIGHT = 2.44
-    LEFT_POST_Y = 36.8
-    RIGHT_POST_Y = 43.2
+with st.container():
+    st.markdown("### 🥅 Goal Placement Diagnostics")
 
-    # Filter goals inside the goal width range (location_y)
-    goals = filtered[
-        (filtered['location_y'] >= LEFT_POST_Y) & 
-        (filtered['location_y'] <= RIGHT_POST_Y)
-    ].copy()
+    st.write("Total goals in dataset:", len(filtered))
+    st.write("location_y missing:", filtered['location_y'].isna().sum())
+    st.write("location_y min:", filtered['location_y'].min())
+    st.write("location_y max:", filtered['location_y'].max())
+    st.write("Goals inside goal width range:", ((filtered['location_y'] >= LEFT_POST_Y) & (filtered['location_y'] <= RIGHT_POST_Y)).sum())
+
+    # Filter goals with valid location_y inside goalposts
+    goals = filtered.dropna(subset=['location_y']).copy()
+    goals = goals[(goals['location_y'] >= LEFT_POST_Y) & (goals['location_y'] <= RIGHT_POST_Y)]
 
     if goals.empty:
         st.info("No goals with location_y inside goalposts found.")
     else:
         # Map location_y to meters across goal width
         goals['goal_x_m'] = (goals['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-
-        # Use location_z if available, else 0 for height
-        goals['goal_z_m'] = goals['location_z'].fillna(0)
+        # Set height 0 initially
+        goals['goal_z_m'] = 0
 
         fig = go.Figure()
 
-        # Draw the goal rectangle
+        # Draw goal rectangle
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
 
@@ -290,16 +294,30 @@ with tab4:
             fig.add_shape(type="line", x0=j*GOAL_WIDTH/3, y0=0, x1=j*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                           line=dict(color="gray", dash="dash"))
 
-        # Plot goal shots
+        # Plot all goals at height=0 (blue)
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
             mode='markers',
-            marker=dict(size=8, color='green', opacity=0.7),
+            marker=dict(size=7, color='blue', opacity=0.5),
             text=goals['player.name'],
-            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
-            name="Goals"
+            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: 0<extra></extra>",
+            name="Goals (no height)"
         ))
+
+        # Now plot only goals with valid location_z with actual height (red)
+        goals_with_height = goals.dropna(subset=['location_z']).copy()
+        if not goals_with_height.empty:
+            goals_with_height['goal_z_m'] = goals_with_height['location_z']
+            fig.add_trace(go.Scatter(
+                x=goals_with_height['goal_x_m'],
+                y=goals_with_height['goal_z_m'],
+                mode='markers',
+                marker=dict(size=8, color='red', opacity=0.8),
+                text=goals_with_height['player.name'],
+                hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
+                name="Goals (with height)"
+            ))
 
         fig.update_layout(
             title="Goal Placement on Goal Face (Width × Height)",
@@ -312,9 +330,8 @@ with tab4:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Show goals data
+        st.markdown("### Goals Data Sample")
         st.dataframe(goals[["player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"]])
-
 
 
 with tab5:
