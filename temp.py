@@ -34,6 +34,7 @@ professional_style = """
 st.markdown(professional_style, unsafe_allow_html=True)
 
 # -------------------- Authentication --------------------
+# -------------------- Authentication --------------------
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -46,7 +47,7 @@ if not st.session_state.authenticated:
         if st.button("Login"):
             if password == PASSWORD:
                 st.session_state.authenticated = True
-                st.experimental.runtime.rerun()
+                st.rerun()  # This is the fixed line
             else:
                 st.error("Incorrect password")
         st.caption("© 2023 Football Analytics Team")
