@@ -268,7 +268,7 @@ with tab4:
             return None, None, None
 
     filtered[['shot.end_location_x', 'shot.end_location_y', 'shot.end_location_z']] = filtered['shot.end_location'].apply(
-        lambda s: pd.Series(split_end_location(s))
+        lambda s: pd.Series(split_end_location(s)))
     
     goals = filtered.dropna(subset=['shot.end_location_y']).copy()
     goals = goals[(goals['shot.end_location_y'] >= LEFT_POST_Y) & (goals['shot.end_location_y'] <= RIGHT_POST_Y)]
