@@ -260,38 +260,47 @@ LEFT_POST_Y = 36.8
 RIGHT_POST_Y = 43.2
 
 with st.container():
-    st.markdown("### 🥅 Goal Placement on Goal Face with 6 Zones (Player POV)")
+    st.markdown("### 🥅 Goal Placement on Goal Face from shot.end_location (6 Zones, Player POV)")
 
-    # Filter goals inside goal width bounds
-    goals = filtered.dropna(subset=['location_y']).copy()
-    goals = goals[(goals['location_y'] >= LEFT_POST_Y) & (goals['location_y'] <= RIGHT_POST_Y)]
+    # Extract end_location components into separate columns safely
+    def extract_coords(loc):
+        try:
+            return loc[0], loc[1], loc[2]
+        except Exception:
+            return None, None, None
+
+    filtered['end_x'], filtered['end_y'], filtered['end_z'] = zip(*filtered['shot.end_location'].apply(extract_coords))
+
+    # Filter goals with valid end_y inside goal width bounds
+    goals = filtered.dropna(subset=['end_y']).copy()
+    goals = goals[(goals['end_y'] >= LEFT_POST_Y) & (goals['end_y'] <= RIGHT_POST_Y)]
 
     if goals.empty:
-        st.info("No goals with location_y inside goalposts found.")
+        st.info("No goals with end_y inside goalposts found.")
     else:
-        # Map location_y (StatsBomb coord) to goal width meters (0 = left post)
-        goals['goal_x_m'] = (goals['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
+        # Map end_y to goal width meters (0 = left post)
+        goals['goal_x_m'] = (goals['end_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
 
-        # Use location_z for height; if missing, set 0
-        goals['goal_z_m'] = goals['location_z'].fillna(0)
+        # Use end_z for height; if missing, set 0
+        goals['goal_z_m'] = goals['end_z'].fillna(0)
 
         fig = go.Figure()
 
-        # Draw goal frame (rectangle)
+        # Draw goal frame
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
 
-        # Draw horizontal zone lines (2 rows → 1 line at half height)
+        # Draw horizontal zone line (half height)
         fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
                       line=dict(color="gray", dash="dash"))
 
-        # Draw vertical zone lines (3 columns → 2 lines at 1/3 and 2/3 width)
+        # Draw vertical zone lines (thirds)
         fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
 
-        # Plot goals as green scatter points
+        # Plot goals (green dots)
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
@@ -303,19 +312,21 @@ with st.container():
         ))
 
         fig.update_layout(
-            title="Goal Placement on Goal Face (6 Zones, Player POV)",
+            title="Goal Placement on Goal Face Using shot.end_location",
             xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
             yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
             height=600,
             width=700,
             plot_bgcolor='white',
-            yaxis_scaleanchor="x"  # keep aspect ratio so goal looks correct
+            yaxis_scaleanchor="x"  # preserve aspect ratio
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Show the filtered goals data
-        st.dataframe(goals[["player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"]])
+        # Show filtered data sample
+        st.dataframe(goals[[
+            "player.name", "team.name", "shot.end_location", "shot.statsbomb_xg"
+        ]])
 
 with tab5:
     st.markdown("### 📑 Summary Report")
