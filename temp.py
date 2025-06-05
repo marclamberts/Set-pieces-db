@@ -5,6 +5,7 @@ import os
 import ast
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -160,8 +161,8 @@ col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
-tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Summary Report",
+tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Header Data", "Summary Report"
 ])
 
 with tab0:
@@ -252,10 +253,6 @@ with tab3:
             st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
 
 with tab4:
-    import pandas as pd
-    import plotly.graph_objects as go
-    import numpy as np
-
     GOAL_WIDTH = 7.32
     GOAL_HEIGHT = 2.44
     LEFT_POST_Y = 36.8
@@ -272,8 +269,7 @@ with tab4:
 
     filtered[['shot.end_location_x', 'shot.end_location_y', 'shot.end_location_z']] = filtered['shot.end_location'].apply(
         lambda s: pd.Series(split_end_location(s))
-    )
-
+    
     goals = filtered.dropna(subset=['shot.end_location_y']).copy()
     goals = goals[(goals['shot.end_location_y'] >= LEFT_POST_Y) & (goals['shot.end_location_y'] <= RIGHT_POST_Y)]
 
@@ -283,24 +279,16 @@ with tab4:
         goals['goal_x_m'] = (goals['shot.end_location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
         goals['goal_z_m'] = goals['shot.end_location_z'].fillna(0)
 
-        # Normalize xG for marker size and color
         xg = goals['shot.statsbomb_xg'].fillna(0)
-        # Marker size scaled between 6 and 20
         marker_size = np.interp(xg, (xg.min(), xg.max()), (6, 20))
-        # Color scale - use xG directly for color
         marker_color = xg
 
         fig = go.Figure()
 
-        # Goal frame
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
-
-        # Horizontal zone line
         fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
                       line=dict(color="gray", dash="dash"))
-
-        # Vertical zone lines
         fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
@@ -346,9 +334,85 @@ with tab4:
             "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
         ]])
 
-
-
 with tab5:
+    st.markdown("### 🧠 Header Data Analysis")
+    
+    # Filter for headers only
+    headers = filtered[filtered['shot.body_part.name'] == 'Head'].copy()
+    
+    if headers.empty:
+        st.warning("No header goals found matching these filters.")
+    else:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Header Goals by Team")
+            team_headers = headers['team.name'].value_counts().reset_index()
+            team_headers.columns = ['Team', 'Header Goals']
+            fig = px.bar(team_headers, x='Team', y='Header Goals', color='Header Goals')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col2:
+            st.markdown("#### Header xG Distribution")
+            fig = px.histogram(headers, x='shot.statsbomb_xg', nbins=15, 
+                              title='Distribution of xG for Headers')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("#### Header Goal Locations")
+        
+        # Create pitch for headers
+        fig = go.Figure()
+        pitch_length, pitch_width = 60, 80
+        fig.update_layout(
+            xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
+            yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
+            plot_bgcolor='white',
+            height=600,
+            shapes=[
+                dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
+                dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
+                dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
+                dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
+                dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
+                dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
+                dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
+                dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
+            ]
+        )
+        
+        headers_half = headers[headers["location_x"] >= 60].copy()
+        headers_half["plot_x"] = headers_half["location_y"]
+        headers_half["plot_y"] = 120 - headers_half["location_x"]
+        
+        hover_text = (
+            "Player: " + headers_half["player.name"] +
+            "<br>Team: " + headers_half["team.name"] +
+            "<br>xG: " + headers_half["shot.statsbomb_xg"].round(2).astype(str) +
+            "<br>Match: " + headers_half["Match"]
+        )
+        
+        fig.add_trace(go.Scatter(
+            x=headers_half["plot_x"],
+            y=headers_half["plot_y"],
+            mode='markers',
+            marker=dict(
+                size=headers_half["shot.statsbomb_xg"] * 40 + 6, 
+                color='#3498db', 
+                line=dict(width=1, color='#2c3e50')
+            ),
+            text=hover_text,
+            hoverinfo='text'
+        ))
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("#### Header Goals Data")
+        st.dataframe(headers[[
+            "player.name", "team.name", "shot.statsbomb_xg", "Match", 
+            "competition.competition_name", "play_pattern.name"
+        ]].sort_values("shot.statsbomb_xg", ascending=False))
+
+with tab6:
     st.markdown("### 📑 Summary Report")
     st.write("#### 🔢 Basic Stats")
     st.write(filtered.describe(include='all'))
