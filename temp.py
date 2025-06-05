@@ -256,83 +256,66 @@ import plotly.graph_objects as go
 
 GOAL_WIDTH = 7.32
 GOAL_HEIGHT = 2.44
-LEFT_POST_Y = 35   # widened from 36.8
-RIGHT_POST_Y = 45  # widened from 43.2
+LEFT_POST_Y = 36.8
+RIGHT_POST_Y = 43.2
 
 with st.container():
-    st.markdown("### 🥅 Goal Placement Diagnostics")
+    st.markdown("### 🥅 Goal Placement on Goal Face with 6 Zones (Player POV)")
 
-    st.write("Total goals in dataset:", len(filtered))
-    st.write("location_y missing:", filtered['location_y'].isna().sum())
-    st.write("location_y min:", filtered['location_y'].min())
-    st.write("location_y max:", filtered['location_y'].max())
-    st.write("Goals inside goal width range:", ((filtered['location_y'] >= LEFT_POST_Y) & (filtered['location_y'] <= RIGHT_POST_Y)).sum())
-
-    # Filter goals with valid location_y inside goalposts
+    # Filter goals inside goal width bounds
     goals = filtered.dropna(subset=['location_y']).copy()
     goals = goals[(goals['location_y'] >= LEFT_POST_Y) & (goals['location_y'] <= RIGHT_POST_Y)]
 
     if goals.empty:
         st.info("No goals with location_y inside goalposts found.")
     else:
-        # Map location_y to meters across goal width
+        # Map location_y (StatsBomb coord) to goal width meters (0 = left post)
         goals['goal_x_m'] = (goals['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-        # Set height 0 initially
-        goals['goal_z_m'] = 0
+
+        # Use location_z for height; if missing, set 0
+        goals['goal_z_m'] = goals['location_z'].fillna(0)
 
         fig = go.Figure()
 
-        # Draw goal rectangle
+        # Draw goal frame (rectangle)
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
 
-        # Draw goal zones (3 vertical x 2 horizontal)
-        for i in range(1, 3):
-            fig.add_shape(type="line", x0=0, y0=i*GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=i*GOAL_HEIGHT/2,
-                          line=dict(color="gray", dash="dash"))
-        for j in range(1, 3):
-            fig.add_shape(type="line", x0=j*GOAL_WIDTH/3, y0=0, x1=j*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                          line=dict(color="gray", dash="dash"))
+        # Draw horizontal zone lines (2 rows → 1 line at half height)
+        fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
+                      line=dict(color="gray", dash="dash"))
 
-        # Plot all goals at height=0 (blue)
+        # Draw vertical zone lines (3 columns → 2 lines at 1/3 and 2/3 width)
+        fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
+                      line=dict(color="gray", dash="dash"))
+        fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
+                      line=dict(color="gray", dash="dash"))
+
+        # Plot goals as green scatter points
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
             mode='markers',
-            marker=dict(size=7, color='blue', opacity=0.5),
+            marker=dict(size=8, color='green', opacity=0.7),
             text=goals['player.name'],
-            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: 0<extra></extra>",
-            name="Goals (no height)"
+            hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
+            name="Goals"
         ))
 
-        # Now plot only goals with valid location_z with actual height (red)
-        goals_with_height = goals.dropna(subset=['location_z']).copy()
-        if not goals_with_height.empty:
-            goals_with_height['goal_z_m'] = goals_with_height['location_z']
-            fig.add_trace(go.Scatter(
-                x=goals_with_height['goal_x_m'],
-                y=goals_with_height['goal_z_m'],
-                mode='markers',
-                marker=dict(size=8, color='red', opacity=0.8),
-                text=goals_with_height['player.name'],
-                hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<extra></extra>",
-                name="Goals (with height)"
-            ))
-
         fig.update_layout(
-            title="Goal Placement on Goal Face (Width × Height)",
-            xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False),
-            yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False),
+            title="Goal Placement on Goal Face (6 Zones, Player POV)",
+            xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
+            yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
             height=600,
             width=700,
-            plot_bgcolor='white'
+            plot_bgcolor='white',
+            yaxis_scaleanchor="x"  # keep aspect ratio so goal looks correct
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### Goals Data Sample")
+        # Show the filtered goals data
         st.dataframe(goals[["player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"]])
-
 
 with tab5:
     st.markdown("### 📑 Summary Report")
