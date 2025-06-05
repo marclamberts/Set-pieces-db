@@ -251,19 +251,18 @@ with tab3:
             st.plotly_chart(px.line(goals_by_date, x="match_date", y="Goals", markers=True), use_container_width=True)
             st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
 
-import streamlit as st
-import plotly.graph_objects as go
-import pandas as pd
+with tab4:
+    import pandas as pd
+    import plotly.graph_objects as go
 
-GOAL_WIDTH = 7.32
-GOAL_HEIGHT = 2.44
-LEFT_POST_Y = 36.8
-RIGHT_POST_Y = 43.2
+    GOAL_WIDTH = 7.32
+    GOAL_HEIGHT = 2.44
+    LEFT_POST_Y = 36.8
+    RIGHT_POST_Y = 43.2
 
-with st.container():
     st.markdown("### 🥅 Goal Placement from shot.end_location string (6 Zones, Player POV)")
 
-    # Split the shot.end_location string into three columns (x,y,z)
+    # Split shot.end_location string into 3 columns
     def split_end_location(s):
         try:
             x_str, y_str, z_str = s.split(',')
@@ -275,36 +274,33 @@ with st.container():
         lambda s: pd.Series(split_end_location(s))
     )
 
-    # Filter for valid end_location_y and inside goalposts
+    # Filter valid goals inside goalposts range
     goals = filtered.dropna(subset=['shot.end_location_y']).copy()
     goals = goals[(goals['shot.end_location_y'] >= LEFT_POST_Y) & (goals['shot.end_location_y'] <= RIGHT_POST_Y)]
 
     if goals.empty:
         st.info("No goals with shot.end_location_y inside goalposts found.")
     else:
-        # Map shot.end_location_y to goal width meters (0 = left post)
         goals['goal_x_m'] = (goals['shot.end_location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-
-        # Use shot.end_location_z for height; fill missing with 0
         goals['goal_z_m'] = goals['shot.end_location_z'].fillna(0)
 
         fig = go.Figure()
 
-        # Draw goal frame rectangle
+        # Goal frame
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
 
-        # Horizontal zone line (half goal height)
+        # Horizontal zone line
         fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
                       line=dict(color="gray", dash="dash"))
 
-        # Vertical zone lines (at 1/3 and 2/3 width)
+        # Vertical zone lines
         fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                       line=dict(color="gray", dash="dash"))
 
-        # Plot goals as green dots
+        # Shots scatter
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
@@ -322,7 +318,7 @@ with st.container():
             height=600,
             width=700,
             plot_bgcolor='white',
-            yaxis_scaleanchor="x"  # keep square aspect ratio
+            yaxis_scaleanchor="x"
         )
 
         st.plotly_chart(fig, use_container_width=True)
@@ -331,6 +327,7 @@ with st.container():
         st.dataframe(goals[[
             "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
         ]])
+
 
 with tab5:
     st.markdown("### 📑 Summary Report")
