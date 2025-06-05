@@ -261,9 +261,8 @@ with tab4:
     LEFT_POST_Y = 36.8
     RIGHT_POST_Y = 43.2
 
-    # Filter only goals with valid location_y inside goal width
+    # Filter goals inside the goal width range (location_y)
     goals = filtered[
-        (filtered['shot.outcome.name'] == 'Goal') &
         (filtered['location_y'] >= LEFT_POST_Y) & 
         (filtered['location_y'] <= RIGHT_POST_Y)
     ].copy()
@@ -271,19 +270,19 @@ with tab4:
     if goals.empty:
         st.info("No goals with location_y inside goalposts found.")
     else:
-        # Map location_y to goal width meters
+        # Map location_y to meters across goal width
         goals['goal_x_m'] = (goals['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
 
-        # Use location_z if available; otherwise default to 0
+        # Use location_z if available, else 0 for height
         goals['goal_z_m'] = goals['location_z'].fillna(0)
 
         fig = go.Figure()
 
-        # Draw goal frame
+        # Draw the goal rectangle
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
 
-        # Draw zones (3 vertical × 2 horizontal)
+        # Draw goal zones (3 vertical x 2 horizontal)
         for i in range(1, 3):
             fig.add_shape(type="line", x0=0, y0=i*GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=i*GOAL_HEIGHT/2,
                           line=dict(color="gray", dash="dash"))
@@ -291,7 +290,7 @@ with tab4:
             fig.add_shape(type="line", x0=j*GOAL_WIDTH/3, y0=0, x1=j*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
                           line=dict(color="gray", dash="dash"))
 
-        # Plot goals
+        # Plot goal shots
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
             y=goals['goal_z_m'],
@@ -313,9 +312,9 @@ with tab4:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        st.dataframe(goals[[
-            "player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"
-        ]])
+        # Show goals data
+        st.dataframe(goals[["player.name", "team.name", "location_x", "location_y", "location_z", "shot.statsbomb_xg"]])
+
 
 
 with tab5:
