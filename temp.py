@@ -254,45 +254,42 @@ with tab3:
 with tab4:
     st.markdown("### 🥅 Goal Placement with Height and Zones")
 
-    if (
-        filtered['location_x'].notna().sum() > 0 and
-        filtered['location_y'].notna().sum() > 0 and
-        filtered['location_z'].notna().sum() > 0
-    ):
+    # Filter only shots with z-coordinate (i.e., on-target)
+    goal_filtered = filtered.dropna(subset=['location_x', 'location_y', 'location_z']).copy()
+    goal_filtered = goal_filtered[goal_filtered['location_x'] >= 119]  # near goal
+
+    if len(goal_filtered) < 10:
+        st.warning("Only a few shots have height (`location_z`) data. Showing histogram instead.")
+        
+        # Show histogram of available location_z
+        import plotly.express as px
+        fig = px.histogram(filtered.dropna(subset=['location_z']),
+                           x="location_z", nbins=15,
+                           title="Distribution of Shot Heights (location_z)")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        # Proceed with goal plot
         import plotly.graph_objects as go
 
-        # Constants
-        GOAL_WIDTH = 7.32  # meters
-        GOAL_HEIGHT = 2.44  # meters
+        GOAL_WIDTH = 7.32
+        GOAL_HEIGHT = 2.44
         LEFT_POST_Y = 36.8
         RIGHT_POST_Y = 43.2
 
-        # Filter relevant shots near the goal with height info
-        goal_filtered = filtered.dropna(subset=['location_x', 'location_y', 'location_z']).copy()
-        goal_filtered = goal_filtered[goal_filtered['location_x'] >= 119]  # near goal line
-
-        # Rescale location_y to fit goal width (0 to 7.32)
+        # Rescale y to goal width
         goal_filtered['goal_x'] = (goal_filtered['location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-        goal_filtered['goal_y'] = goal_filtered['location_z']  # already in meters
+        goal_filtered['goal_y'] = goal_filtered['location_z']
 
-        # Create figure
         fig = go.Figure()
 
-        # Draw goal outline
-        fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
-                      line=dict(color="black", width=3))
-
-        # Draw horizontal zones (2 rows)
-        fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
-                      line=dict(color="gray", dash="dash"))
-
-        # Draw vertical zones (3 columns)
+        # Draw goal and zones
+        fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT, line=dict(color="black", width=3))
+        fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2, line=dict(color="gray", dash="dash"))
         for i in range(1, 3):
             x = i * (GOAL_WIDTH / 3)
-            fig.add_shape(type="line", x0=x, y0=0, x1=x, y1=GOAL_HEIGHT,
-                          line=dict(color="gray", dash="dash"))
+            fig.add_shape(type="line", x0=x, y0=0, x1=x, y1=GOAL_HEIGHT, line=dict(color="gray", dash="dash"))
 
-        # Add shot scatter
+        # Add shots
         fig.add_trace(go.Scatter(
             x=goal_filtered['goal_x'],
             y=goal_filtered['goal_y'],
@@ -303,23 +300,17 @@ with tab4:
             name="Shots"
         ))
 
-        # Final layout
         fig.update_layout(
             title="Shot Placement by Goal Zone",
-            xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False),
-            yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False),
+            xaxis=dict(title="Goal Width (m)", range=[0, GOAL_WIDTH], showgrid=False),
+            yaxis=dict(title="Height (m)", range=[0, GOAL_HEIGHT], showgrid=False),
             height=500,
             width=700,
             plot_bgcolor='white'
         )
 
         st.plotly_chart(fig, use_container_width=True)
-
-        # Show shot data
         st.dataframe(goal_filtered[["player.name", "team.name", "location_y", "location_z", "shot.statsbomb_xg"]])
-
-    else:
-        st.info("No complete shot location data (x, y, z) available to render goal placement.")
 
 with tab5:
     st.markdown("### 📑 Summary Report")
