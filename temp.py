@@ -69,7 +69,7 @@ def load_data():
     base_path = os.path.dirname(__file__)
 
     # Load Excel files with engine specified
-    df_main = pd.read_excel(os.path.join(base_path, "db (1).xlsx"))
+    df_main = pd.read_excel(os.path.join(base_path, "clean_merged.xlsx"))
     df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
 
     # Merge on match_id, allow .x/.y suffixes for overlapping columns
