@@ -57,7 +57,7 @@ if not st.session_state.authenticated:
 @st.cache_data(ttl=3600)
 def load_data():
     base_path = os.path.dirname(__file__)
-    df = pd.read_excel("db1.xlsx", engine="openpyxl")
+    df = pd.read_excel("db (1).xlsx", engine="openpyxl")
     df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
     df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
     df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
