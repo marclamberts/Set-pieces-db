@@ -59,8 +59,8 @@ def load_data():
     base_path = os.path.dirname(__file__)
     
     # Load both Excel files
-    df_main = pd.read_excel(os.path.join(base_path, "db.xlsx"), engine="openpyxl")
-    df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"), engine="openpyxl")
+    df = pd.read_excel(os.path.join(base_path, "db1.xlsx"))
+    df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
 
     # Merge on match_id (or change to another key if needed)
     df = pd.merge(df_main, df_filtered, on="match_id", how="outer")
