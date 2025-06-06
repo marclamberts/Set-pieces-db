@@ -64,7 +64,7 @@ def load_data():
     base_path = os.path.dirname(__file__)
 
     # Load main Excel file without engine
-    df_main = pd.read_excel(os.path.join(base_path, "db.xlsx"))
+    df_main = pd.read_excel(os.path.join(base_path, "db.xlsx"), engine="openpyxl")
 
     # Load filtered goals file with explicit engine
     df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"), engine="openpyxl")
