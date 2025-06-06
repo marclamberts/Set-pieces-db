@@ -58,22 +58,30 @@ import ast
 import pandas as pd
 import streamlit as st
 
-# -------------------- Load Data --------------------
+import os
+import ast
+import pandas as pd
+import streamlit as st
+
 @st.cache_data(ttl=3600)
 def load_data():
     base_path = os.path.dirname(__file__)
 
-    # Load Excel files with engine specified
+    # Load Excel files with explicit engine to avoid format issues
     df_main = pd.read_excel(os.path.join(base_path, "db (1).xlsx"))
     df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
 
-    # Merge on match_id, allow .x/.y suffixes for overlapping columns
+    # Normalize column names to lowercase (optional but safe)
+    df_main.columns = df_main.columns.str.lower()
+    df_filtered.columns = df_filtered.columns.str.lower()
+
+    # Merge on 'match_id' (lowercase after normalization)
     df = pd.merge(df_main, df_filtered, on="match_id", how="outer", suffixes=('', '_drop'))
 
-    # Drop all duplicate columns that came from df_filtered
+    # Drop duplicate columns created by merge with '_drop' suffix
     df = df[[col for col in df.columns if not col.endswith('_drop')]]
 
-    # Clean common string columns if they exist
+    # Clean string columns if they exist
     for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -83,25 +91,26 @@ def load_data():
 # Load and preprocess data
 df = load_data()
 
-# Safely parse location column
+# Safely parse location column (expects string representations of lists)
 df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
 
-# Expand location into separate columns
+# Expand 'location' into separate X, Y, Z columns
 loc_df = df['location'].apply(pd.Series)
 loc_df.columns = ['location_x', 'location_y', 'location_z']
 df = pd.concat([df, loc_df], axis=1)
 
-# Drop duplicates based on relevant columns
+# Remove duplicates on key shot attributes
 df = df.drop_duplicates(subset=[
     'location_x', 'location_y', 'shot.statsbomb_xg',
-    'team.name', 'player.name', 'Match', 'shot.body_part.name'
+    'team.name', 'player.name', 'match', 'shot.body_part.name'
 ])
 
-# Filter valid shots
+# Filter out rows with missing location_x or xG values
 df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 
-# Filter for goals from inside the final third
+# Filter goals from inside the final third (location_x >= 60)
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
+
 
 
 
