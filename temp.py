@@ -68,15 +68,8 @@ import streamlit as st
 def load_data():
     base_path = os.path.dirname(__file__)
 
-    # Load Excel files with engine specified
-    df_main = pd.read_excel(os.path.join(base_path, "clean_merged.xlsx"))
-    df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
-
-    # Merge on match_id, allow .x/.y suffixes for overlapping columns
-    df = pd.merge(df_main, df_filtered, on="match_id", how="outer", suffixes=('', '_drop'))
-
-    # Drop all duplicate columns that came from df_filtered
-    df = df[[col for col in df.columns if not col.endswith('_drop')]]
+    # Load single merged Excel file
+    df = pd.read_excel(os.path.join(base_path, "clean_merged.xlsx"))
 
     # Clean common string columns if they exist
     for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
@@ -107,9 +100,6 @@ df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 
 # Filter for goals from inside the final third
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
-
-
-
 
 # -------------------- Sidebar Filters --------------------
 with st.sidebar:
