@@ -60,44 +60,55 @@ import ast
 import os
 import streamlit as st
 
+import os
+import ast
+import pandas as pd
+import streamlit as st
+
+# -------------------- Load Data --------------------
 @st.cache_data(ttl=3600)
 def load_data():
     base_path = os.path.dirname(__file__)
-    
-    # Load both Excel files with explicit engine
+
+    # Load both Excel files
     df_main = pd.read_excel(os.path.join(base_path, "db.xlsx"))
     df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
 
-    # Merge on match_id (or change to another key if needed)
+    # Merge on 'match_id' (adjust key if needed)
     df = pd.merge(df_main, df_filtered, on="match_id", how="outer")
 
-    # Clean and format columns
+    # Clean string columns
     df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
     df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
     df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
-    
+
     return df
 
+# Load and preprocess data
 df = load_data()
 
-# Ensure location is parsed as a list
+# Parse location column
 df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
 
 # Expand location into X/Y/Z
 loc_df = df['location'].apply(pd.Series)
 loc_df.columns = ['location_x', 'location_y', 'location_z']
 
-# Append expanded columns to main DataFrame
+# Merge location columns into main dataframe
 df = pd.concat([df, loc_df], axis=1)
 
 # Remove duplicates
-df = df.drop_duplicates(subset=['location_x', 'location_y', 'shot.statsbomb_xg', 'team.name', 'player.name', 'Match', 'shot.body_part.name'])
+df = df.drop_duplicates(subset=[
+    'location_x', 'location_y', 'shot.statsbomb_xg',
+    'team.name', 'player.name', 'Match', 'shot.body_part.name'
+])
 
-# Filter valid rows
+# Filter for valid location and xG
 df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 
 # Filter goals from inside final third
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
+
 
 
 # -------------------- Sidebar Filters --------------------
