@@ -53,13 +53,6 @@ if not st.session_state.authenticated:
         st.caption("© 2023 Football Analytics Team")
     st.stop()
 
-# -------------------- Load Data --------------------
-# -------------------- Load Data --------------------
-import pandas as pd
-import ast
-import os
-import streamlit as st
-
 import os
 import ast
 import pandas as pd
@@ -70,9 +63,11 @@ import streamlit as st
 def load_data():
     base_path = os.path.dirname(__file__)
 
-    # Load both Excel files
+    # Load main Excel file without engine
     df_main = pd.read_excel(os.path.join(base_path, "db.xlsx"))
-    df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
+
+    # Load filtered goals file with explicit engine
+    df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"), engine="openpyxl")
 
     # Merge on 'match_id' (adjust key if needed)
     df = pd.merge(df_main, df_filtered, on="match_id", how="outer")
@@ -108,6 +103,7 @@ df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 
 # Filter goals from inside final third
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
+
 
 
 
