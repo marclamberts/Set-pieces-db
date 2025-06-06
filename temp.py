@@ -63,45 +63,44 @@ import streamlit as st
 def load_data():
     base_path = os.path.dirname(__file__)
 
-    # Load main Excel file without engine
+    # Load Excel files with engine specified
     df_main = pd.read_excel(os.path.join(base_path, "db (1).xlsx"))
-
-    # Load filtered goals file with explicit engine
     df_filtered = pd.read_excel(os.path.join(base_path, "filtered_goals_all_matches.xlsx"))
 
-    # Merge on 'match_id' (adjust key if needed)
-    df = pd.merge(df_main, df_filtered, on="match_id", how="outer")
+    # Merge on match_id, allow .x/.y suffixes for overlapping columns
+    df = pd.merge(df_main, df_filtered, on="match_id", how="outer", suffixes=('', '_drop'))
 
-    # Clean string columns
-    df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
-    df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
-    df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
+    # Drop all duplicate columns that came from df_filtered
+    df = df[[col for col in df.columns if not col.endswith('_drop')]]
+
+    # Clean common string columns if they exist
+    for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
 
     return df
 
 # Load and preprocess data
 df = load_data()
 
-# Parse location column
+# Safely parse location column
 df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
 
-# Expand location into X/Y/Z
+# Expand location into separate columns
 loc_df = df['location'].apply(pd.Series)
 loc_df.columns = ['location_x', 'location_y', 'location_z']
-
-# Merge location columns into main dataframe
 df = pd.concat([df, loc_df], axis=1)
 
-# Remove duplicates
+# Drop duplicates based on relevant columns
 df = df.drop_duplicates(subset=[
     'location_x', 'location_y', 'shot.statsbomb_xg',
     'team.name', 'player.name', 'Match', 'shot.body_part.name'
 ])
 
-# Filter for valid location and xG
+# Filter valid shots
 df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
 
-# Filter goals from inside final third
+# Filter for goals from inside the final third
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
 
 
