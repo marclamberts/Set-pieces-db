@@ -191,7 +191,7 @@ col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
 tab0, tab1, tab3, tab4, tab5, tab6 = st.tabs([
-    "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Header Data", "Summary Report"
+    "General Dashboard", "Goal Map", "xG Analysis", "Goal Placement", "Header Data", "Summary Report"
 ])
 
 with tab0:
