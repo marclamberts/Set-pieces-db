@@ -69,7 +69,7 @@ def load_data():
     base_path = os.path.dirname(__file__)
 
     # Load single merged Excel file
-    df = pd.read_excel(os.path.join(base_path, "clean_merged.xlsx"))
+    df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
 
     # Clean common string columns if they exist
     for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
