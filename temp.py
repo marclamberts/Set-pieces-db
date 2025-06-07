@@ -27,6 +27,11 @@ professional_style = """
     .stTabs [data-baseweb="tab"] { padding: 10px 20px; border-radius: 8px 8px 0 0; background-color: #ecf0f1; }
     .stTabs [aria-selected="true"] { background-color: #3498db; color: white; }
     [data-testid="metric-container"] { background-color: white; border-radius: 8px; padding: 15px; border-left: 4px solid #3498db; }
+    .leaderboard-table { width: 100%; border-collapse: collapse; }
+    .leaderboard-table th { background-color: #3498db; color: white; padding: 10px; text-align: left; }
+    .leaderboard-table td { padding: 8px; border-bottom: 1px solid #ddd; }
+    .leaderboard-table tr:nth-child(even) { background-color: #f2f2f2; }
+    .leaderboard-table tr:hover { background-color: #e6f7ff; }
 </style>
 """
 st.markdown(professional_style, unsafe_allow_html=True)
@@ -177,8 +182,8 @@ col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
-tab0, tab1, tab4 = st.tabs([
-    "General Dashboard", "Goal Map", "Goal Placement"
+tab0, tab1, tab4, tab_leaderboard = st.tabs([
+    "General Dashboard", "Goal Map", "Goal Placement", "Leaderboard"
 ])
 
 with tab0:
@@ -321,6 +326,89 @@ with tab4:
         st.dataframe(goals[[
             "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
         ]])
+
+with tab_leaderboard:
+    st.markdown("### 🏆 Performance Leaderboard")
+    
+    # Add a selectbox to choose the metric for ranking
+    leaderboard_metric = st.selectbox(
+        "Rank players by:", 
+        ["Total Goals", "Total xG", "Average xG per Goal", "Goals per Match"],
+        key="leaderboard_metric"
+    )
+    
+    # Calculate the metrics for each player
+    if not filtered.empty:
+        leaderboard_data = filtered.groupby(['player.name', 'team.name']).agg(
+            Total_Goals=('player.name', 'count'),
+            Total_xG=('shot.statsbomb_xg', 'sum'),
+            Matches=('Match', 'nunique')
+        ).reset_index()
+        
+        leaderboard_data['Avg_xG_per_Goal'] = leaderboard_data['Total_xG'] / leaderboard_data['Total_Goals']
+        leaderboard_data['Goals_per_Match'] = leaderboard_data['Total_Goals'] / leaderboard_data['Matches']
+        
+        # Sort based on selected metric
+        if leaderboard_metric == "Total Goals":
+            leaderboard_data = leaderboard_data.sort_values('Total_Goals', ascending=False)
+            metric_col = 'Total_Goals'
+        elif leaderboard_metric == "Total xG":
+            leaderboard_data = leaderboard_data.sort_values('Total_xG', ascending=False)
+            metric_col = 'Total_xG'
+        elif leaderboard_metric == "Average xG per Goal":
+            leaderboard_data = leaderboard_data.sort_values('Avg_xG_per_Goal', ascending=False)
+            metric_col = 'Avg_xG_per_Goal'
+        else:  # Goals per Match
+            leaderboard_data = leaderboard_data.sort_values('Goals_per_Match', ascending=False)
+            metric_col = 'Goals_per_Match'
+        
+        # Format the numbers for display
+        leaderboard_data[metric_col] = leaderboard_data[metric_col].round(3)
+        
+        # Display the leaderboard
+        st.markdown(f"#### Top 20 Players by {leaderboard_metric}")
+        
+        # Create a styled table
+        st.write(
+            f"""
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>{leaderboard_metric}</th>
+                        <th>Total Goals</th>
+                        <th>Total xG</th>
+                        <th>Matches</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        for i, row in leaderboard_data.head(20).iterrows():
+            st.write(
+                f"""
+                <tr>
+                    <td>{i+1}</td>
+                    <td>{row['player.name']}</td>
+                    <td>{row['team.name']}</td>
+                    <td><strong>{row[metric_col]}</strong></td>
+                    <td>{row['Total_Goals']}</td>
+                    <td>{row['Total_xG']:.2f}</td>
+                    <td>{row['Matches']}</td>
+                </tr>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        st.write("</tbody></table>", unsafe_allow_html=True)
+        
+        # Show full data as an option
+        if st.checkbox("Show full leaderboard data"):
+            st.dataframe(leaderboard_data)
 
 st.download_button(
     "Download CSV", 
