@@ -6,9 +6,6 @@ import ast
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 st.set_page_config(
     page_title="Set Piece Dashboard",
@@ -52,16 +49,6 @@ if not st.session_state.authenticated:
                 st.error("Incorrect password")
         st.caption("© 2023 Football Analytics Team")
     st.stop()
-
-import os
-import ast
-import pandas as pd
-import streamlit as st
-
-import os
-import ast
-import pandas as pd
-import streamlit as st
 
 # -------------------- Load Data --------------------
 @st.cache_data(ttl=3600)
@@ -190,8 +177,8 @@ col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
-tab0, tab1, tab3, tab4, tab5, tab6 = st.tabs([
-    "General Dashboard", "Goal Map", "xG Analysis", "Goal Placement", "Header Data", "Summary Report"
+tab0, tab1, tab4 = st.tabs([
+    "General Dashboard", "Goal Map", "Goal Placement"
 ])
 
 with tab0:
@@ -252,30 +239,6 @@ with tab1:
     st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
-
-with tab3:
-    st.markdown("### 📊 xG & Timeline Visualizations")
-    chart_type = st.selectbox("Choose Chart Type", ["xG Histogram", "Box Plot", "xG by Category", "Scatter Plot", "Goals Over Time"], key="chart_type_selector")
-    if chart_type == "xG Histogram":
-        st.bar_chart(filtered["shot.statsbomb_xg"])
-    elif chart_type == "Box Plot":
-        st.plotly_chart(px.box(filtered, y="shot.statsbomb_xg", points="all"), use_container_width=True)
-    elif chart_type == "xG by Category":
-        category = st.selectbox("Group xG by:", ["team.name", "shot.body_part.name", "play_pattern.name", "position.name"], key="category_selector")
-        data = filtered.groupby(category)["shot.statsbomb_xg"].mean().sort_values(ascending=False).reset_index()
-        fig_bar = px.bar(data, x=category, y="shot.statsbomb_xg", text="shot.statsbomb_xg")
-        st.plotly_chart(fig_bar, use_container_width=True)
-    elif chart_type == "Scatter Plot":
-        fig = px.scatter(filtered, x="location_x", y="location_y", size="shot.statsbomb_xg", color="team.name", hover_name="player.name")
-        st.plotly_chart(fig, use_container_width=True)
-    elif chart_type == "Goals Over Time":
-        if "date" in filtered.columns:
-            filtered["match_date"] = pd.to_datetime(filtered["date"], errors="coerce")
-            filtered = filtered[filtered["match_date"].notna()]
-            goals_by_date = filtered.groupby("match_date").size().reset_index(name="Goals")
-            xg_by_date = filtered.groupby("match_date")["shot.statsbomb_xg"].mean().reset_index(name="Avg_xG")
-            st.plotly_chart(px.line(goals_by_date, x="match_date", y="Goals", markers=True), use_container_width=True)
-            st.plotly_chart(px.line(xg_by_date, x="match_date", y="Avg_xG", markers=True), use_container_width=True)
 
 with tab4:
     GOAL_WIDTH = 7.32
@@ -358,99 +321,6 @@ with tab4:
         st.dataframe(goals[[
             "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
         ]])
-
-with tab5:
-    st.markdown("### 🧠 Header Data Analysis")
-    
-    # Filter for headers only
-    headers = filtered[filtered['shot.body_part.name'] == 'Head'].copy()
-    
-    if headers.empty:
-        st.warning("No header goals found matching these filters.")
-    else:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Header Goals by Team")
-            team_headers = headers['team.name'].value_counts().reset_index()
-            team_headers.columns = ['Team', 'Header Goals']
-            fig = px.bar(team_headers, x='Team', y='Header Goals', color='Header Goals')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        with col2:
-            st.markdown("#### Header xG Distribution")
-            fig = px.histogram(headers, x='shot.statsbomb_xg', nbins=15, 
-                              title='Distribution of xG for Headers')
-            st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("#### Header Goal Locations")
-        
-        # Create pitch for headers
-        fig = go.Figure()
-        pitch_length, pitch_width = 60, 80
-        fig.update_layout(
-            xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
-            yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
-            plot_bgcolor='white',
-            height=600,
-            shapes=[
-                dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
-                dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
-                dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
-                dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
-                dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
-                dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
-                dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
-                dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
-            ]
-        )
-        
-        headers_half = headers[headers["location_x"] >= 60].copy()
-        headers_half["plot_x"] = headers_half["location_y"]
-        headers_half["plot_y"] = 120 - headers_half["location_x"]
-        
-        hover_text = (
-            "Player: " + headers_half["player.name"] +
-            "<br>Team: " + headers_half["team.name"] +
-            "<br>xG: " + headers_half["shot.statsbomb_xg"].round(2).astype(str) +
-            "<br>Match: " + headers_half["Match"]
-        )
-        
-        fig.add_trace(go.Scatter(
-            x=headers_half["plot_x"],
-            y=headers_half["plot_y"],
-            mode='markers',
-            marker=dict(
-                size=headers_half["shot.statsbomb_xg"] * 40 + 6, 
-                color='#3498db', 
-                line=dict(width=1, color='#2c3e50')
-            ),
-            text=hover_text,
-            hoverinfo='text'
-        ))
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("#### Header Goals Data")
-        st.dataframe(headers[[
-            "player.name", "team.name", "shot.statsbomb_xg", "Match", 
-            "competition.competition_name", "play_pattern.name"
-        ]].sort_values("shot.statsbomb_xg", ascending=False))
-
-with tab6:
-    st.markdown("### 📑 Summary Report")
-    st.write("#### 🔢 Basic Stats")
-    st.write(filtered.describe(include='all'))
-
-    st.write("#### 💡 Grouped Stats")
-    cols_to_group = ["team.name", "shot.body_part.name", "play_pattern.name"]
-    for col in cols_to_group:
-        group_data = filtered.groupby(col).agg(
-            Goals=('player.name', 'count'),
-            Avg_xG=('shot.statsbomb_xg', 'mean')
-        ).sort_values(by='Goals', ascending=False)
-        st.write(f"**Grouped by {col}**")
-        st.dataframe(group_data)
 
 st.download_button(
     "Download CSV", 
