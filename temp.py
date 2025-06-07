@@ -53,23 +53,52 @@ if not st.session_state.authenticated:
         st.caption("© 2023 Football Analytics Team")
     st.stop()
 
+import os
+import ast
+import pandas as pd
+import streamlit as st
+
+import os
+import ast
+import pandas as pd
+import streamlit as st
+
 # -------------------- Load Data --------------------
 @st.cache_data(ttl=3600)
 def load_data():
     base_path = os.path.dirname(__file__)
-    df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
-    df["competition.country_name"] = df["competition.country_name"].astype(str).str.strip()
-    df["competition.competition_name"] = df["competition.competition_name"].astype(str).str.strip()
-    df["season.season_name"] = df["season.season_name"].astype(str).str.strip()
+
+    # Load single merged Excel file
+    df = pd.read_excel(os.path.join(base_path, "clean_merged.xlsx"))
+
+    # Clean common string columns if they exist
+    for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
     return df
 
+# Load and preprocess data
 df = load_data()
+
+# Safely parse location column
 df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
+
+# Expand location into separate columns
 loc_df = df['location'].apply(pd.Series)
 loc_df.columns = ['location_x', 'location_y', 'location_z']
 df = pd.concat([df, loc_df], axis=1)
-df = df.drop_duplicates(subset=['location_x', 'location_y', 'shot.statsbomb_xg', 'team.name', 'player.name', 'Match', 'shot.body_part.name'])
+
+# Drop duplicates based on relevant columns
+df = df.drop_duplicates(subset=[
+    'location_x', 'location_y', 'shot.statsbomb_xg',
+    'team.name', 'player.name', 'Match', 'shot.body_part.name'
+])
+
+# Filter valid shots
 df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
+
+# Filter for goals from inside the final third
 df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
 
 # -------------------- Sidebar Filters --------------------
