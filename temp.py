@@ -190,7 +190,7 @@ col3.metric("Top Team", filtered['team.name'].mode()[0])
 col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
 
 # -------------------- Tabs --------------------
-tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab0, tab1, tab3, tab4, tab5, tab6 = st.tabs([
     "General Dashboard", "Goal Map", "Data Explorer", "xG Analysis", "Goal Placement", "Header Data", "Summary Report"
 ])
 
@@ -252,10 +252,6 @@ with tab1:
     st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
         "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
     ]])
-
-with tab2:
-    st.markdown("### 🔍 Data Table")
-    st.dataframe(filtered, use_container_width=True)
 
 with tab3:
     st.markdown("### 📊 xG & Timeline Visualizations")
