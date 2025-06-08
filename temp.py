@@ -16,25 +16,129 @@ st.set_page_config(
 PASSWORD = "PrincessWay2526"
 
 # -------------------- Style --------------------
-professional_style = """
+economist_style = """
 <style>
-    .main { background-color: #f8f9fa; }
-    .sidebar .sidebar-content { background-color: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
-    h1, h2, h3, h4, h5, h6 { color: #2c3e50; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .stButton>button { background-color: #3498db; color: white; border-radius: 6px; }
-    .stButton>button:hover { background-color: #2980b9; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { padding: 10px 20px; border-radius: 8px 8px 0 0; background-color: #ecf0f1; }
-    .stTabs [aria-selected="true"] { background-color: #3498db; color: white; }
-    [data-testid="metric-container"] { background-color: white; border-radius: 8px; padding: 15px; border-left: 4px solid #3498db; }
-    .leaderboard-table { width: 100%; border-collapse: collapse; }
-    .leaderboard-table th { background-color: #3498db; color: white; padding: 10px; text-align: left; }
-    .leaderboard-table td { padding: 8px; border-bottom: 1px solid #ddd; }
-    .leaderboard-table tr:nth-child(even) { background-color: #f2f2f2; }
-    .leaderboard-table tr:hover { background-color: #e6f7ff; }
+    :root {
+        --economist-red: #e3120b;
+        --economist-dark: #121212;
+        --economist-light: #f8f8f8;
+        --economist-blue: #1e73be;
+        --economist-gray: #767676;
+    }
+    
+    .main { 
+        background-color: var(--economist-light); 
+        font-family: 'Georgia', serif;
+    }
+    
+    .sidebar .sidebar-content { 
+        background-color: white; 
+        border-right: 1px solid #e0e0e0;
+    }
+    
+    h1, h2, h3, h4, h5, h6 { 
+        color: var(--economist-dark);
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+    }
+    
+    h1 {
+        border-bottom: 2px solid var(--economist-red);
+        padding-bottom: 8px;
+    }
+    
+    .stButton>button { 
+        background-color: var(--economist-red); 
+        color: white; 
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    
+    .stButton>button:hover { 
+        background-color: #c10e08; 
+        transform: none; 
+        box-shadow: none;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] { 
+        gap: 0px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .stTabs [data-baseweb="tab"] { 
+        padding: 10px 20px; 
+        background-color: transparent;
+        border: none;
+        font-weight: 600;
+        color: var(--economist-gray);
+    }
+    
+    .stTabs [aria-selected="true"] { 
+        background-color: transparent;
+        color: var(--economist-red);
+        border-bottom: 2px solid var(--economist-red);
+    }
+    
+    [data-testid="metric-container"] { 
+        background-color: white; 
+        border-radius: 0px; 
+        padding: 15px; 
+        border-left: 4px solid var(--economist-red);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .leaderboard-table { 
+        width: 100%; 
+        border-collapse: collapse;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    .leaderboard-table th { 
+        background-color: var(--economist-dark); 
+        color: white; 
+        padding: 10px; 
+        text-align: left;
+        font-weight: 600;
+    }
+    
+    .leaderboard-table td { 
+        padding: 10px; 
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .leaderboard-table tr:nth-child(even) { 
+        background-color: #f8f8f8; 
+    }
+    
+    .leaderboard-table tr:hover { 
+        background-color: #f0f0f0; 
+    }
+    
+    .plot-container {
+        background-color: white;
+        padding: 15px;
+        border: 1px solid #e0e0e0;
+    }
+    
+    .stDataFrame {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    .stMarkdown {
+        font-family: 'Georgia', serif;
+    }
+    
+    .footer {
+        font-size: 0.8em;
+        color: var(--economist-gray);
+        border-top: 1px solid #e0e0e0;
+        padding-top: 10px;
+        margin-top: 30px;
+    }
 </style>
 """
-st.markdown(professional_style, unsafe_allow_html=True)
+st.markdown(economist_style, unsafe_allow_html=True)
 
 # -------------------- Authentication --------------------
 if "authenticated" not in st.session_state:
@@ -52,7 +156,7 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("Incorrect password")
-        st.caption("© 2023 Football Analytics Team")
+        st.markdown('<div class="footer">© 2023 Football Analytics Team</div>', unsafe_allow_html=True)
     st.stop()
 
 # -------------------- Load Data --------------------
@@ -97,7 +201,7 @@ df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].co
 
 # -------------------- Sidebar Filters --------------------
 with st.sidebar:
-    st.markdown("### 🔍 Filter Options")
+    st.markdown("### Filter Options")
     filters = {}
     filters["Set Piece Type"] = st.selectbox(
         "Set Piece", 
@@ -184,7 +288,7 @@ if filtered.empty:
     st.stop()
 
 # -------------------- Metrics --------------------
-st.title("⚽ Set Piece Goals Analysis")
+st.title("Set Piece Goals Analysis")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Goals", len(filtered))
 col2.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
@@ -197,27 +301,34 @@ tab0, tab1, tab4, tab_leaderboard = st.tabs([
 ])
 
 with tab0:
-    st.markdown("### 📊 General Overview")
+    st.markdown("### General Overview")
     col1, col2 = st.columns(2)
     with col1:
         team_counts = filtered["team.name"].value_counts().reset_index()
         team_counts.columns = ["Team", "Goals"]
-        fig_team = px.bar(team_counts, x="Team", y="Goals", color="Goals", text="Goals")
+        fig_team = px.bar(team_counts, x="Team", y="Goals", 
+                         color_discrete_sequence=["#e3120b"],
+                         template="simple_white")
+        fig_team.update_layout(plot_bgcolor='white', paper_bgcolor='white')
         st.plotly_chart(fig_team, use_container_width=True)
     with col2:
         type_counts = filtered["play_pattern.name"].value_counts().reset_index()
         type_counts.columns = ["Set Piece Type", "Goals"]
-        fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals", color="Goals", text="Goals")
+        fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals",
+                         color_discrete_sequence=["#1e73be"],
+                         template="simple_white")
+        fig_type.update_layout(plot_bgcolor='white', paper_bgcolor='white')
         st.plotly_chart(fig_type, use_container_width=True)
 
 with tab1:
-    st.markdown("### 📍 Goal Locations")
+    st.markdown("### Goal Locations")
     fig = go.Figure()
     pitch_length, pitch_width = 60, 80
     fig.update_layout(
         xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
         yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
         plot_bgcolor='white',
+        paper_bgcolor='white',
         height=700,
         shapes=[
             dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
@@ -244,7 +355,7 @@ with tab1:
         x=filtered_half["plot_x"],
         y=filtered_half["plot_y"],
         mode='markers',
-        marker=dict(size=filtered_half["shot.statsbomb_xg"] * 40 + 6, color='#e74c3c', line=dict(width=1, color='#2c3e50')),
+        marker=dict(size=filtered_half["shot.statsbomb_xg"] * 40 + 6, color='#e3120b', line=dict(width=1, color='#2c3e50')),
         text=hover_text,
         hoverinfo='text'
     ))
@@ -261,7 +372,7 @@ with tab4:
     LEFT_POST_Y = 36.8
     RIGHT_POST_Y = 43.2
 
-    st.markdown("### 🥅 Goal Placement from shot.end_location string (6 Zones, Player POV)")
+    st.markdown("### Goal Placement from shot.end_location string (6 Zones, Player POV)")
 
     def split_end_location(s):
         try:
@@ -291,11 +402,11 @@ with tab4:
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
         fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
-                      line=dict(color="gray", dash="dash"))
+                      line=dict(color="#767676", dash="dash"))
         fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                      line=dict(color="gray", dash="dash"))
+                      line=dict(color="#767676", dash="dash"))
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                      line=dict(color="gray", dash="dash"))
+                      line=dict(color="#767676", dash="dash"))
 
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
@@ -327,6 +438,7 @@ with tab4:
             height=600,
             width=700,
             plot_bgcolor='white',
+            paper_bgcolor='white',
             yaxis_scaleanchor="x"
         )
 
@@ -338,7 +450,7 @@ with tab4:
         ]])
 
 with tab_leaderboard:
-    st.markdown("### 🏆 Performance Leaderboard")
+    st.markdown("### Performance Leaderboard")
     
     # Add a selectbox to choose the metric for ranking
     leaderboard_metric = st.selectbox(
@@ -428,7 +540,7 @@ st.download_button(
 )
 
 st.markdown("""
-    <div style="text-align: center; padding: 20px;">
+    <div class="footer">
         <p>© 2025 Outswinger FC Analytics | Powered by Marc Lamberts</p>
     </div>
 """, unsafe_allow_html=True)
