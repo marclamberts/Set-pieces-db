@@ -16,19 +16,21 @@ st.set_page_config(
 PASSWORD = "PrincessWay2526"
 
 # -------------------- Style --------------------
-economist_style = """
+fivethirtyeight_style = """
 <style>
     :root {
-        --economist-red: #e3120b;
-        --economist-dark: #121212;
-        --economist-light: #f8f8f8;
-        --economist-blue: #1e73be;
-        --economist-gray: #767676;
+        --fte-blue: #1a73e8;
+        --fte-red: #ed3b3b;
+        --fte-green: #4caf50;
+        --fte-purple: #9c27b0;
+        --fte-dark: #202020;
+        --fte-light: #f8f8f8;
+        --fte-gray: #757575;
     }
     
     .main { 
-        background-color: var(--economist-light); 
-        font-family: 'Georgia', serif;
+        background-color: white; 
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .sidebar .sidebar-content { 
@@ -37,33 +39,35 @@ economist_style = """
     }
     
     h1, h2, h3, h4, h5, h6 { 
-        color: var(--economist-dark);
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        font-weight: 600;
+        color: var(--fte-dark);
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 700;
         letter-spacing: -0.5px;
     }
     
     h1 {
-        border-bottom: 2px solid var(--economist-red);
+        border-bottom: 3px solid var(--fte-blue);
         padding-bottom: 8px;
+        font-size: 2.2rem;
     }
     
     .stButton>button { 
-        background-color: var(--economist-red); 
+        background-color: var(--fte-blue); 
         color: white; 
         border-radius: 4px;
         font-weight: 600;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .stButton>button:hover { 
-        background-color: #c10e08; 
+        background-color: #0d5bba; 
         transform: none; 
         box-shadow: none;
     }
     
     .stTabs [data-baseweb="tab-list"] { 
         gap: 0px;
-        border-bottom: 1px solid #e0e0e0;
+        border-bottom: 2px solid #e0e0e0;
     }
     
     .stTabs [data-baseweb="tab"] { 
@@ -71,35 +75,36 @@ economist_style = """
         background-color: transparent;
         border: none;
         font-weight: 600;
-        color: var(--economist-gray);
+        color: var(--fte-gray);
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .stTabs [aria-selected="true"] { 
         background-color: transparent;
-        color: var(--economist-red);
-        border-bottom: 2px solid var(--economist-red);
+        color: var(--fte-blue);
+        border-bottom: 3px solid var(--fte-blue);
     }
     
     [data-testid="metric-container"] { 
         background-color: white; 
         border-radius: 0px; 
         padding: 15px; 
-        border-left: 4px solid var(--economist-red);
+        border-left: 4px solid var(--fte-blue);
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     
     .leaderboard-table { 
         width: 100%; 
         border-collapse: collapse;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .leaderboard-table th { 
-        background-color: var(--economist-dark); 
+        background-color: var(--fte-dark); 
         color: white; 
-        padding: 10px; 
+        padding: 12px; 
         text-align: left;
-        font-weight: 600;
+        font-weight: 700;
     }
     
     .leaderboard-table td { 
@@ -118,27 +123,35 @@ economist_style = """
     .plot-container {
         background-color: white;
         padding: 15px;
-        border: 1px solid #e0e0e0;
     }
     
     .stDataFrame {
-        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .stMarkdown {
-        font-family: 'Georgia', serif;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
     
     .footer {
         font-size: 0.8em;
-        color: var(--economist-gray);
-        border-top: 1px solid #e0e0e0;
-        padding-top: 10px;
+        color: var(--fte-gray);
+        border-top: 2px solid #e0e0e0;
+        padding-top: 15px;
         margin-top: 30px;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    /* FiveThirtyEight-style annotations */
+    .annotation {
+        font-size: 0.85em;
+        color: var(--fte-gray);
+        font-style: italic;
+        margin-top: 5px;
     }
 </style>
 """
-st.markdown(economist_style, unsafe_allow_html=True)
+st.markdown(fivethirtyeight_style, unsafe_allow_html=True)
 
 # -------------------- Authentication --------------------
 if "authenticated" not in st.session_state:
@@ -307,18 +320,36 @@ with tab0:
         team_counts = filtered["team.name"].value_counts().reset_index()
         team_counts.columns = ["Team", "Goals"]
         fig_team = px.bar(team_counts, x="Team", y="Goals", 
-                         color_discrete_sequence=["#e3120b"],
-                         template="simple_white")
-        fig_team.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+                         color_discrete_sequence=["#1a73e8"],
+                         template="plotly_white")
+        fig_team.update_layout(
+            plot_bgcolor='white', 
+            paper_bgcolor='white',
+            title="Goals by Team",
+            title_font=dict(size=18),
+            margin=dict(t=40, b=40),
+            showlegend=False
+        )
+        fig_team.update_traces(marker_line_width=0)
         st.plotly_chart(fig_team, use_container_width=True)
+        st.markdown('<div class="annotation">Number of set piece goals by team</div>', unsafe_allow_html=True)
     with col2:
         type_counts = filtered["play_pattern.name"].value_counts().reset_index()
         type_counts.columns = ["Set Piece Type", "Goals"]
         fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals",
-                         color_discrete_sequence=["#1e73be"],
-                         template="simple_white")
-        fig_type.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+                         color_discrete_sequence=["#ed3b3b"],
+                         template="plotly_white")
+        fig_type.update_layout(
+            plot_bgcolor='white', 
+            paper_bgcolor='white',
+            title="Goals by Set Piece Type",
+            title_font=dict(size=18),
+            margin=dict(t=40, b=40),
+            showlegend=False
+        )
+        fig_type.update_traces(marker_line_width=0)
         st.plotly_chart(fig_type, use_container_width=True)
+        st.markdown('<div class="annotation">Distribution across different set piece types</div>', unsafe_allow_html=True)
 
 with tab1:
     st.markdown("### Goal Locations")
@@ -330,6 +361,9 @@ with tab1:
         plot_bgcolor='white',
         paper_bgcolor='white',
         height=700,
+        margin=dict(t=40, b=40),
+        title="Goal Locations from Set Pieces",
+        title_font=dict(size=18),
         shapes=[
             dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
             dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
@@ -355,11 +389,18 @@ with tab1:
         x=filtered_half["plot_x"],
         y=filtered_half["plot_y"],
         mode='markers',
-        marker=dict(size=filtered_half["shot.statsbomb_xg"] * 40 + 6, color='#e3120b', line=dict(width=1, color='#2c3e50')),
+        marker=dict(
+            size=filtered_half["shot.statsbomb_xg"] * 40 + 6, 
+            color=filtered_half["shot.statsbomb_xg"],
+            colorscale='Bluered',
+            colorbar=dict(title="xG"),
+            line=dict(width=0.5, color='black')
+        ),
         text=hover_text,
         hoverinfo='text'
     ))
     st.plotly_chart(fig, use_container_width=True)
+    st.markdown('<div class="annotation">Location of set piece goals (size and color by xG)</div>', unsafe_allow_html=True)
 
     selected_player = st.selectbox("Select Player", sorted(filtered_half["player.name"].unique()), key="player_selector")
     st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
@@ -372,7 +413,7 @@ with tab4:
     LEFT_POST_Y = 36.8
     RIGHT_POST_Y = 43.2
 
-    st.markdown("### Goal Placement from shot.end_location string (6 Zones, Player POV)")
+    st.markdown("### Goal Placement from shot.end_location")
 
     def split_end_location(s):
         try:
@@ -402,11 +443,11 @@ with tab4:
         fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
                       line=dict(color="black", width=3))
         fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
-                      line=dict(color="#767676", dash="dash"))
+                      line=dict(color="#757575", dash="dash"))
         fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                      line=dict(color="#767676", dash="dash"))
+                      line=dict(color="#757575", dash="dash"))
         fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                      line=dict(color="#767676", dash="dash"))
+                      line=dict(color="#757575", dash="dash"))
 
         fig.add_trace(go.Scatter(
             x=goals['goal_x_m'],
@@ -415,10 +456,10 @@ with tab4:
             marker=dict(
                 size=marker_size,
                 color=marker_color,
-                colorscale='Viridis',
+                colorscale='Bluered',
                 showscale=True,
                 colorbar=dict(title="xG"),
-                line=dict(width=1, color='DarkSlateGrey'),
+                line=dict(width=0.5, color='black'),
                 opacity=0.8
             ),
             text=goals['player.name'],
@@ -432,17 +473,20 @@ with tab4:
         ))
 
         fig.update_layout(
-            title="Goal Placement on Goal Face from shot.end_location string (Size & Color by xG)",
+            title="Goal Placement (Size & Color by xG)",
+            title_font=dict(size=18),
             xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
             yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
             height=600,
             width=700,
             plot_bgcolor='white',
             paper_bgcolor='white',
+            margin=dict(t=40, b=40),
             yaxis_scaleanchor="x"
         )
 
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown('<div class="annotation">Where set piece goals are being placed (divided into 6 zones)</div>', unsafe_allow_html=True)
 
         st.markdown("### Goals Data Sample")
         st.dataframe(goals[[
@@ -527,6 +571,7 @@ with tab_leaderboard:
             )
         
         st.write("</tbody></table>", unsafe_allow_html=True)
+        st.markdown('<div class="annotation">Performance metrics for set piece specialists</div>', unsafe_allow_html=True)
         
         # Show full data as an option
         if st.checkbox("Show full leaderboard data"):
