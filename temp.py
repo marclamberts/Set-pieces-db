@@ -63,11 +63,13 @@ def load_data():
     # Load single merged Excel file
     df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
 
-    # Clean common string columns if they exist
-    for col in ["competition.country_name", "competition.competition_name", "season.season_name"]:
+    # Clean and ensure string type for filter columns
+    filter_columns = ["competition.country_name", "competition.competition_name", "season.season_name"]
+    for col in filter_columns:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-
+            # Convert to string, strip whitespace, and replace any NaN/None with empty string
+            df[col] = df[col].astype(str).str.strip().replace('nan', '').replace('None', '')
+    
     return df
 
 # Load and preprocess data
@@ -99,43 +101,51 @@ with st.sidebar:
     filters = {}
     filters["Set Piece Type"] = st.selectbox(
         "Set Piece", 
-        ["All"] + sorted(df["play_pattern.name"].dropna().unique()),
+        ["All"] + sorted(df["play_pattern.name"].dropna().unique().tolist()),
         key="set_piece_filter"
     )
     filters["Team"] = st.selectbox(
         "Team", 
-        ["All"] + sorted(df["team.name"].dropna().unique()),
+        ["All"] + sorted(df["team.name"].dropna().unique().tolist()),
         key="team_filter"
     )
     filters["Position"] = st.selectbox(
         "Position", 
-        ["All"] + sorted(df["position.name"].dropna().unique()),
+        ["All"] + sorted(df["position.name"].dropna().unique().tolist()),
         key="position_filter"
     )
+    
+    # Enhanced filter options with all values
+    country_options = ["All"] + sorted([x for x in df["competition.country_name"].unique().tolist() if x and str(x) != 'nan'])
     filters["Nation"] = st.selectbox(
         "Nation", 
-        ["All"] + sorted(df["competition.country_name"].dropna().unique()),
+        country_options,
         key="nation_filter"
     )
+    
+    competition_options = ["All"] + sorted([x for x in df["competition.competition_name"].unique().tolist() if x and str(x) != 'nan'])
+    filters["League"] = st.selectbox(
+        "League", 
+        competition_options,
+        key="league_filter"
+    )
+    
+    season_options = ["All"] + sorted([x for x in df["season.season_name"].unique().tolist() if x and str(x) != 'nan'])
+    filters["Season"] = st.selectbox(
+        "Season", 
+        season_options,
+        key="season_filter"
+    )
+    
     filters["Match"] = st.selectbox(
         "Match", 
-        ["All"] + sorted(df["Match"].dropna().unique()),
+        ["All"] + sorted(df["Match"].dropna().unique().tolist()),
         key="match_filter"
     )
     filters["Body Part"] = st.selectbox(
         "Body Part", 
-        ["All"] + sorted(df["shot.body_part.name"].dropna().unique()),
+        ["All"] + sorted(df["shot.body_part.name"].dropna().unique().tolist()),
         key="body_part_filter"
-    )
-    filters["League"] = st.selectbox(
-        "League", 
-        ["All"] + sorted(df["competition.competition_name"].dropna().unique()),
-        key="league_filter"
-    )
-    filters["Season"] = st.selectbox(
-        "Season", 
-        ["All"] + sorted(df["season.season_name"].dropna().unique()),
-        key="season_filter"
     )
     filters["First-Time"] = st.selectbox(
         "First-Time Shot", 
