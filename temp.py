@@ -585,9 +585,9 @@ import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 
 # Corner Analysis Tab
-tab_corners = st.tabs(["Corner Analysis"])[0]
+tab_corner = st.tabs(["Corner Analysis"])[0]
 
-with tab_corners:
+with tab_corner:
     st.markdown("### Corner Kick Sequence Analysis")
 
     # Create filters specific to corner analysis
