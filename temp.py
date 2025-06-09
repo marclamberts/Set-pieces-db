@@ -600,13 +600,12 @@ def load_german_data():
     # return pd.read_csv('german_data.csv')
     pass
 
+# Tab Corner Analysis
 with tab_corner:
     st.markdown("### Corner Kick Sequence Analysis")
     
-    # Load German data for corner analysis
     df_german = load_german_data()
 
-    # Sidebar filters using df_german
     st.sidebar.markdown("### Corner Filter Options")
     corner_team_filter = st.sidebar.selectbox(
         "Team (Corners)", 
@@ -629,16 +628,14 @@ with tab_corner:
         key="corner_side_filter"
     )
 
-    # Prepare corner data
     df_corner = df_german.copy()
 
+    # Process pass.end_location if it exists
     if 'pass.end_location' in df_corner.columns:
-        # Handle string format
         mask_str = df_corner['pass.end_location'].astype(str).str.contains(r'\[.*,.*\]', na=False)
         if mask_str.any():
             df_corner.loc[mask_str, ['pass_end_x', 'pass_end_y']] = df_corner.loc[mask_str, 'pass.end_location'].str.strip('[]').str.split(',', expand=True).astype(float)
-        
-        # Handle list format
+
         mask_list = df_corner['pass.end_location'].apply(lambda x: isinstance(x, list))
         if mask_list.any():
             df_corner.loc[mask_list, ['pass_end_x', 'pass_end_y']] = pd.DataFrame(df_corner.loc[mask_list, 'pass.end_location'].tolist())
@@ -648,7 +645,6 @@ with tab_corner:
     elif 'event_id' in df_corner.columns:
         df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
 
-    # Identify corner passes
     corner_passes = df_corner[
         (df_corner['type.name'] == 'Pass') &
         (df_corner['play_pattern.name'] == 'From Corner') &
@@ -671,7 +667,7 @@ with tab_corner:
 
             start_team = row['possession_team.id'] if 'possession_team.id' in row else row.get('team.id', None)
             subsequent_events = df_corner.iloc[idx + 1:]
-            
+
             if start_team:
                 same_possession = subsequent_events[
                     subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == start_team
@@ -715,7 +711,6 @@ with tab_corner:
 
         corner_summary = pd.DataFrame(results)
 
-        # Apply filters
         filtered_corners = corner_summary.copy()
         if corner_team_filter != "All":
             filtered_corners = filtered_corners[filtered_corners["team.name"] == corner_team_filter]
@@ -742,11 +737,7 @@ with tab_corner:
                         subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
                     ]
                     shots = same_possession[same_possession['type.name'] == 'Shot']
-
-                    if 'shot.statsbomb_xg' in shots.columns:
-                        corner_xg = shots['shot.statsbomb_xg'].fillna(0).sum()
-                    else:
-                        corner_xg = 0.0
+                    corner_xg = shots['shot.statsbomb_xg'].fillna(0).sum()
                 else:
                     corner_xg = 0.0
 
@@ -768,12 +759,13 @@ with tab_corner:
             col3.metric("Avg xG per Corner", f"{xg_total/len(filtered_corners):.3f}" if len(filtered_corners) > 0 else "0")
 
             st.markdown("#### Corner Pass End Locations")
+
             valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
 
             if not valid_locations.empty:
                 colors = {
                     'First contact - direct shot': '#FF0000',
-                    'First contact - shot within 3 seconds': '#0000FF', 
+                    'First contact - shot within 3 seconds': '#0000FF',
                     'No first contact - shot': '#00FF00',
                     'First contact - no shot': '#FFA500',
                     'No first contact - no shot': '#808080'
@@ -781,8 +773,10 @@ with tab_corner:
 
                 fig = go.Figure()
 
-                fig.add_shape(type="rect", x0=0, y0=0, x1=120, y1=80, line=dict(color="black", width=2))
-                fig.add_shape(type="rect", x0=102, y0=18, x1=120, y1=62, line=dict(color="black", width=2))
+                fig.add_shape(type="rect", x0=0, y0=0, x1=120, y1=80, 
+                              line=dict(color="black", width=2))
+                fig.add_shape(type="rect", x0=102, y0=18, x1=120, y1=62, 
+                              line=dict(color="black", width=2))
 
                 for classification in valid_locations['classification'].unique():
                     subset = valid_locations[valid_locations['classification'] == classification]
@@ -800,7 +794,7 @@ with tab_corner:
 
                 fig.update_layout(
                     title='Corner Pass End Locations by Classification',
-                    xaxis=dict(title='X Position', range=[120, 0]),
+                    xaxis=dict(title='X Position', range=[0, 120]),
                     yaxis=dict(title='Y Position', range=[0, 80]),
                     height=600,
                     showlegend=True
@@ -809,19 +803,10 @@ with tab_corner:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No valid location data found for corner passes.")
-
-            st.markdown("#### Corner Outcome Distribution")
-            classification_counts = filtered_corners['classification'].value_counts()
-            fig_pie = px.pie(
-                names=classification_counts.index,
-                values=classification_counts.values,
-                title="Corner Outcome Breakdown"
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("No corners found matching the selected filters.")
+            st.info("No corners found for the selected filters.")
     else:
-        st.info("No corner passes found in the dataset.")
+        st.info("No corner passes found in the data.")
 
 st.download_button(
     "Download CSV", 
