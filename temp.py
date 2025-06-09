@@ -189,6 +189,11 @@ def load_data():
     
     return df
 
+@st.cache_data(ttl=3600)
+def load_german_data():
+    base_path = os.path.dirname(__file__)
+    return pd.read_excel(os.path.join(base_path, "ger.xlsx"))
+
 # Load and preprocess data
 df = load_data()
 
@@ -589,6 +594,10 @@ tab_corner = st.tabs(["Corner Analysis"])[0]
 
 with tab_corner:
     st.markdown("### Corner Kick Sequence Analysis")
+    
+    # Load German data for corner analysis
+    df_german = load_german_data()
+    # Use df_german instead of df for corner analysis
 
     # Create filters specific to corner analysis
     st.sidebar.markdown("### Corner Filter Options")
