@@ -657,13 +657,18 @@ else:
 
     # Process pass.end_location if it exists
     if 'pass.end_location' in df_corner.columns:
-        mask_str = df_corner['pass.end_location'].astype(str).str.contains(r'\[.*,.*\]', na=False)
-        if mask_str.any():
-            df_corner.loc[mask_str, ['pass_end_x', 'pass_end_y']] = df_corner.loc[mask_str, 'pass.end_location'].str.strip('[]').str.split(',', expand=True).astype(float)
-
-        mask_list = df_corner['pass.end_location'].apply(lambda x: isinstance(x, list))
-        if mask_list.any():
-            df_corner.loc[mask_list, ['pass_end_x', 'pass_end_y']] = pd.DataFrame(df_corner.loc[mask_list, 'pass.end_location'].tolist())
+        def parse_location_string(loc):
+            if pd.isna(loc):
+                return [None, None]
+            try:
+                parts = loc.split(',')
+                return [float(parts[0].strip()), float(parts[1].strip())]
+            except:
+                return [None, None]
+    
+        locations = df_corner['pass.end_location'].apply(parse_location_string)
+        df_corner['pass_end_x'] = locations.apply(lambda x: x[0])
+        df_corner['pass_end_y'] = locations.apply(lambda x: x[1])
 
     if 'index' in df_corner.columns:
         df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
