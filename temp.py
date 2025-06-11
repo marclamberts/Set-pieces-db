@@ -769,19 +769,8 @@ for _, row in filtered_corners.iterrows():
             subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
         ]
         shots = same_possession[same_possession['event_type'] == 'Shot']
-        corner_xg = shots['shot.statsbomb_xg'].fillna(0).sum() if not shots.empty else 0.0
-    else:
-        corner_xg = 0.0
+        
 
-    xg_per_corner.append(corner_xg)
-    xg_total += corner_xg
-
-    pass_technique = row['pass_technique']
-    if isinstance(pass_technique, str):
-        if 'inswinger' in pass_technique.lower():
-            xg_inswinger += corner_xg
-        elif 'outswinger' in pass_technique.lower():
-            xg_outswinger += corner_xg
 
 filtered_corners['xg_per_corner'] = xg_per_corner
 
