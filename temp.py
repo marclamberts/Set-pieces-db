@@ -707,14 +707,14 @@ for idx, row in corner_passes.iterrows():
         classification = 'No first contact - no shot'
     else:
         first_contact = same_possession.iloc[0]
-        if first_contact['type.name'] == 'Shot':
+        if first_contact['event_type'] == 'Shot':
             classification = 'First contact - direct shot'
         else:
-            shots_nearby = same_possession.head(3)[same_possession.head(3)['type.name'] == 'Shot']
+            shots_nearby = same_possession.head(3)[same_possession.head(3)['event_type'] == 'Shot']
             if not shots_nearby.empty:
                 classification = 'First contact - shot within 3 seconds'
             else:
-                any_shot = same_possession[same_possession['type.name'] == 'Shot']
+                any_shot = same_possession[same_possession['event_type'] == 'Shot']
                 if not any_shot.empty:
                     classification = 'No first contact - shot'
                 else:
@@ -744,8 +744,6 @@ filtered_corners = corner_summary.copy()
 
 if corner_team_filter != "All":
     filtered_corners = filtered_corners[filtered_corners["team.name"] == corner_team_filter]
-if corner_player_filter != "All":
-    filtered_corners = filtered_corners[filtered_corners["player.name"] == corner_player_filter]
 if corner_technique_filter != "All":
     filtered_corners = filtered_corners[filtered_corners["pass_technique"] == corner_technique_filter]
 if corner_side_filter != "All":
@@ -770,7 +768,7 @@ for _, row in filtered_corners.iterrows():
         same_possession = subsequent_events[
             subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
         ]
-        shots = same_possession[same_possession['type.name'] == 'Shot']
+        shots = same_possession[same_possession['event_type'] == 'Shot']
         corner_xg = shots['shot.statsbomb_xg'].fillna(0).sum() if not shots.empty else 0.0
     else:
         corner_xg = 0.0
