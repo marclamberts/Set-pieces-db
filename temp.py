@@ -605,7 +605,7 @@ import matplotlib.pyplot as plt
 
 # --- Load Data ---
 def load_german_data():
-    file_path = "ger.xlsx"  # Update path if needed
+    file_path = "corner_passes_and_shots.xlsx"  # Update path if needed
     try:
         if not os.path.exists(file_path):
             st.error(f"File not found: {file_path}")
