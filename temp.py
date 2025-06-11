@@ -593,19 +593,30 @@ import plotly.express as px
 import pandas as pd
 import streamlit as st
 
-@st.cache_data
-def load_german_data():
-    try:
-        # Example loading method
-        df = pd.read_excel("ger.xlsx")  # Replace with your actual loading logic
+import pandas as pd
+import streamlit as st
+import os
 
-        if df is not None and not df.empty:
-            return df
-        else:
-            return pd.DataFrame()  # Always return a DataFrame, even if empty
+def load_german_data():
+    file_path = "ger.xlsx"  # Adjust if your file is in a subfolder
+
+    try:
+        if not os.path.exists(file_path):
+            st.error(f"File not found: {file_path}")
+            return pd.DataFrame()
+
+        df = pd.read_excel(file_path)
+
+        if df is None or df.empty:
+            st.warning("Excel file loaded but is empty.")
+            return pd.DataFrame()
+
+        return df
+
     except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return pd.DataFrame()  # Return empty DataFrame instead of None
+        st.error(f"Error loading Excel file: {e}")
+        return pd.DataFrame()
+
 
 
 # Load the data
