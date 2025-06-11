@@ -673,7 +673,7 @@ elif 'event_id' in df_corner.columns:
 
 # Filter corner passes
 corner_passes = df_corner[
-    (df_corner['type.name'] == 'Pass') &
+    (df_corner['event_type'] == 'CornerPass') &
     (df_corner['play_pattern.name'] == 'From Corner') &
     (df_corner['pass.type.name'] == 'Corner')
 ].copy()
