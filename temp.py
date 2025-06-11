@@ -632,11 +632,7 @@ corner_team_filter = st.sidebar.selectbox(
     ["All"] + sorted(df_german["team.name"].dropna().unique().tolist()),
     key="corner_team_filter"
 )
-corner_player_filter = st.sidebar.selectbox(
-    "Player (Corners)",
-    ["All"] + sorted(df_german["player.name"].dropna().unique().tolist()),
-    key="corner_player_filter"
-)
+
 corner_technique_filter = st.sidebar.selectbox(
     "Corner Technique",
     ["All"] + sorted(df_german["pass.technique.name"].dropna().unique().tolist()),
