@@ -597,7 +597,7 @@ import streamlit as st
 def load_german_data():
     # Your loading logic here
     # Example:
-    # return pd.read_csv('german_data.csv')
+    return pd.read_excel('ger.xlsx')
     pass
 
 # Tab Corner Analysis
