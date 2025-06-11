@@ -595,10 +595,18 @@ import streamlit as st
 
 @st.cache_data
 def load_german_data():
-    # Your loading logic here
-    # Example:
-    return pd.read_excel('ger.xlsx')
-    pass
+    try:
+        # Example loading method
+        df = pd.read_excel("ger.xlsx")  # Replace with your actual loading logic
+
+        if df is not None and not df.empty:
+            return df
+        else:
+            return pd.DataFrame()  # Always return a DataFrame, even if empty
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame()  # Return empty DataFrame instead of None
+
 
 # Tab Corner Analysis
 with tab_corner:
