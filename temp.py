@@ -608,12 +608,14 @@ def load_german_data():
         return pd.DataFrame()  # Return empty DataFrame instead of None
 
 
-# Tab Corner Analysis
-with tab_corner:
-    st.markdown("### Corner Kick Sequence Analysis")
-    
-    df_german = load_german_data()
+# Load the data
+df_german = load_german_data()
 
+# Immediately check if the data is valid
+if df_german is None or not isinstance(df_german, pd.DataFrame) or df_german.empty:
+    st.error("No data loaded or data is empty. Please check your data source.")
+else:
+    # Proceed with the sidebar and the rest of the app
     st.sidebar.markdown("### Corner Filter Options")
     corner_team_filter = st.sidebar.selectbox(
         "Team (Corners)", 
@@ -635,6 +637,10 @@ with tab_corner:
         ["All", "Left", "Right"],
         key="corner_side_filter"
     )
+
+    # Proceed with the rest of your analysis
+    # (Put the rest of your code here)
+
 
     df_corner = df_german.copy()
 
