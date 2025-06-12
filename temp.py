@@ -583,7 +583,7 @@ with tab_leaderboard:
             st.dataframe(leaderboard_data)
             
 
-# --- Imports ---
+## --- Imports ---
 import os
 import pandas as pd
 import streamlit as st
@@ -592,7 +592,7 @@ import matplotlib.pyplot as plt
 
 # --- Load Data ---
 def load_german_data():
-    file_path = "corner_passes_and_shots.xlsx"  # Update path if needed
+    file_path = "corner_passes_and_shots.xlsx"
     try:
         if not os.path.exists(file_path):
             st.error(f"File not found: {file_path}")
@@ -609,7 +609,7 @@ def load_german_data():
 df_german = load_german_data()
 
 if df_german.empty:
-    st.stop()  # No data, stop execution
+    st.stop()
 
 # --- Sidebar Filters ---
 st.sidebar.markdown("### Corner Filter Options")
@@ -635,7 +635,6 @@ corner_side_filter = st.sidebar.selectbox(
 # --- Prepare corner data ---
 df_corner = df_german.copy()
 
-# Parse pass.end_location (expected format: '35.5, 39.4')
 def parse_location_string(loc):
     if pd.isna(loc):
         return [None, None]
@@ -653,13 +652,11 @@ else:
     df_corner['pass_end_x'] = None
     df_corner['pass_end_y'] = None
 
-# Sort events by index or event_id to keep timeline
 if 'index' in df_corner.columns:
     df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
 elif 'event_id' in df_corner.columns:
     df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
 
-# Filter corner passes
 corner_passes = df_corner[df_corner['event_type'] == 'CornerPass'].copy()
 
 if corner_passes.empty:
@@ -758,14 +755,15 @@ for _, row in filtered_corners.iterrows():
         ]
         shots = same_possession[same_possession['event_type'] == 'Shot']
 
-        if not shots.empty:
+        if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
             xg_value = valid_xg_values.sum()
 
     xg_total += xg_value
     xg_per_corner.append(xg_value)
 
-filtered_corners['xg_per_corner'] = xg_per_corner
+filtered_corners = filtered_corners.reset_index(drop=True)
+filtered_corners['xg_per_corner'] = pd.Series(xg_per_corner)
 
 # --- Display metrics ---
 col1, col2, col3 = st.columns(3)
