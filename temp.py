@@ -581,13 +581,11 @@ with tab_leaderboard:
         # Show full data as an option
         if st.checkbox("Show full leaderboard data"):
             st.dataframe(leaderboard_data)
-            
-
 # --- Imports ---
 import os
 import pandas as pd
 import streamlit as st
-from mplsoccer import Pitch, VerticalPitch
+from mplsoccer import Pitch
 import matplotlib.pyplot as plt
 
 # --- Load Data ---
@@ -605,7 +603,6 @@ def load_german_data():
     except Exception as e:
         st.error(f"Error loading Excel file: {e}")
         return pd.DataFrame()
-
 
 df_german = load_german_data()
 
@@ -636,7 +633,6 @@ corner_side_filter = st.sidebar.selectbox(
 # --- Prepare corner data ---
 df_corner = df_german.copy()
 
-# Parse pass.end_location (expected format: '35.5, 39.4')
 def parse_location_string(loc):
     if pd.isna(loc):
         return [None, None]
@@ -654,13 +650,11 @@ else:
     df_corner['pass_end_x'] = None
     df_corner['pass_end_y'] = None
 
-# Sort events by index or event_id to keep timeline
 if 'index' in df_corner.columns:
     df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
 elif 'event_id' in df_corner.columns:
     df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
 
-# Filter corner passes
 corner_passes = df_corner[df_corner['event_type'] == 'CornerPass'].copy()
 
 if corner_passes.empty:
@@ -725,6 +719,31 @@ for idx, row in corner_passes.iterrows():
 
 corner_summary = pd.DataFrame(results)
 
+# --- Additional Sidebar Filters ---
+pass_height_filter = st.sidebar.selectbox(
+    "Pass Height",
+    ["All"] + sorted(corner_summary["pass_height"].dropna().unique().tolist()),
+    key="pass_height_filter"
+)
+
+pass_body_part_filter = st.sidebar.selectbox(
+    "Pass Body Part",
+    ["All"] + sorted(corner_summary["pass_body_part"].dropna().unique().tolist()),
+    key="pass_body_part_filter"
+)
+
+pass_outcome_filter = st.sidebar.selectbox(
+    "Pass Outcome",
+    ["All"] + sorted(corner_summary["pass_outcome"].dropna().unique().tolist()),
+    key="pass_outcome_filter"
+)
+
+classification_filter = st.sidebar.selectbox(
+    "Corner Outcome Classification",
+    ["All"] + sorted(corner_summary["classification"].dropna().unique().tolist()),
+    key="classification_filter"
+)
+
 # --- Apply filters ---
 filtered_corners = corner_summary.copy()
 
@@ -734,6 +753,14 @@ if corner_technique_filter != "All":
     filtered_corners = filtered_corners[filtered_corners["pass_technique"] == corner_technique_filter]
 if corner_side_filter != "All":
     filtered_corners = filtered_corners[filtered_corners["side"] == corner_side_filter]
+if pass_height_filter != "All":
+    filtered_corners = filtered_corners[filtered_corners["pass_height"] == pass_height_filter]
+if pass_body_part_filter != "All":
+    filtered_corners = filtered_corners[filtered_corners["pass_body_part"] == pass_body_part_filter]
+if pass_outcome_filter != "All":
+    filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == pass_outcome_filter]
+if classification_filter != "All":
+    filtered_corners = filtered_corners[filtered_corners["classification"] == classification_filter]
 
 if filtered_corners.empty:
     st.info("No corners found for the selected filters.")
@@ -766,7 +793,6 @@ for _, row in filtered_corners.iterrows():
     xg_total += xg_value
     xg_per_corner.append(xg_value)
 
-# Ensure list length matches DataFrame length
 if len(xg_per_corner) == len(filtered_corners):
     filtered_corners['xg_per_corner'] = xg_per_corner
 else:
@@ -783,7 +809,7 @@ valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
 if valid_locations.empty:
     st.info("No valid location data found for corner passes.")
 else:
-    pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='grass', line_color='white')
+    pitch = Pitch(pitch_type='statsbomb', pitch_color='grass', line_color='white')
     fig, ax = pitch.draw(figsize=(12, 8))
 
     colors = {
