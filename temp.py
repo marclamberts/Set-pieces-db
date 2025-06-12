@@ -587,7 +587,7 @@ with tab_leaderboard:
 import os
 import pandas as pd
 import streamlit as st
-from mplsoccer import Pitch
+from mplsoccer import Pitch, VerticalPitch
 import matplotlib.pyplot as plt
 
 # --- Load Data ---
@@ -783,7 +783,7 @@ valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
 if valid_locations.empty:
     st.info("No valid location data found for corner passes.")
 else:
-    pitch = Pitch(pitch_type='statsbomb', pitch_color='grass', line_color='white')
+    pitch = VerticalPitch(pitch_type='statsbomb', half=True, pitch_color='grass', line_color='white')
     fig, ax = pitch.draw(figsize=(12, 8))
 
     colors = {
