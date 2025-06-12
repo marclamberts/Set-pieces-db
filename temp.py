@@ -583,20 +583,7 @@ with tab_leaderboard:
             st.dataframe(leaderboard_data)
             
 
-# Imports to add at the top
-from mplsoccer import VerticalPitch
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
-import plotly.graph_objects as go
-import plotly.express as px
-import pandas as pd
-import streamlit as st
-
-import pandas as pd
-import streamlit as st
-import os
-
+# --- Imports ---
 import os
 import pandas as pd
 import streamlit as st
@@ -638,6 +625,7 @@ corner_technique_filter = st.sidebar.selectbox(
     ["All"] + sorted(df_german["pass.technique.name"].dropna().unique().tolist()),
     key="corner_technique_filter"
 )
+
 corner_side_filter = st.sidebar.selectbox(
     "Corner Side",
     ["All", "Left", "Right"],
@@ -672,9 +660,7 @@ elif 'event_id' in df_corner.columns:
     df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
 
 # Filter corner passes
-corner_passes = df_corner[
-    (df_corner['event_type'] == 'CornerPass') 
-].copy()
+corner_passes = df_corner[df_corner['event_type'] == 'CornerPass'].copy()
 
 if corner_passes.empty:
     st.info("No corner passes found in the data.")
@@ -683,7 +669,6 @@ if corner_passes.empty:
 # --- Classify corner passes ---
 results = []
 for idx, row in corner_passes.iterrows():
-    # Determine corner side by starting location x
     side = 'Unknown'
     if 'location' in row and isinstance(row['location'], (list, tuple)) and len(row['location']) >= 1:
         side = 'Left' if row['location'][0] < 60 else 'Right'
@@ -755,13 +740,16 @@ if filtered_corners.empty:
 
 # --- Calculate xG stats ---
 xg_total = 0.0
-xg_inswinger = 0.0
-xg_outswinger = 0.0
 xg_per_corner = []
 
 for _, row in filtered_corners.iterrows():
     corner_index = row['corner_index']
-    possession_team = df_corner.loc[corner_index, 'possession_team.id'] if 'possession_team.id' in df_corner.columns else df_corner.loc[corner_index].get('team.id', None)
+    try:
+        possession_team = df_corner.loc[corner_index, 'possession_team.id'] if 'possession_team.id' in df_corner.columns else df_corner.loc[corner_index].get('team.id', None)
+    except KeyError:
+        possession_team = None
+
+    xg_value = 0.0
 
     if possession_team is not None:
         subsequent_events = df_corner.iloc[corner_index + 1:]
@@ -769,8 +757,13 @@ for _, row in filtered_corners.iterrows():
             subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
         ]
         shots = same_possession[same_possession['event_type'] == 'Shot']
-        
 
+        if not shots.empty:
+            valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
+            xg_value = valid_xg_values.sum()
+
+    xg_total += xg_value
+    xg_per_corner.append(xg_value)
 
 filtered_corners['xg_per_corner'] = xg_per_corner
 
@@ -778,7 +771,7 @@ filtered_corners['xg_per_corner'] = xg_per_corner
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Corners", len(filtered_corners))
 col2.metric("Total xG Generated", f"{xg_total:.2f}")
-col3.metric("Avg xG per Corner", f"{(xg_total/len(filtered_corners)):.3f}")
+col3.metric("Avg xG per Corner", f"{(xg_total / len(filtered_corners)):.3f}")
 
 # --- Plot on mplsoccer pitch ---
 valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
