@@ -935,36 +935,7 @@ st.download_button(
     key="download_button"
 )
 
-elif st.session_state.current_section == "penalties":
-    st.title("Penalty Kick Analysis")
-    st.markdown("This section is under development. Coming soon with detailed penalty statistics and visualizations.")
 
-    # Placeholder content
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("### Penalty Conversion Rates")
-        st.write("""
-            - Overall conversion rate: 75%
-            - Top 5 penalty takers: 
-                1. Player A (92%)
-                2. Player B (89%)
-                3. Player C (87%)
-                4. Player D (85%)
-                5. Player E (83%)
-        """)
-
-    with col2:
-        st.markdown("### Penalty Placement")
-        st.write("""
-            Visualization of penalty placement will appear here.
-            - Left side: 45%
-            - Right side: 40%
-            - Center: 15%
-        """)
-
-    st.markdown("### Recent Penalties")
-    st.write("Table of recent penalties with details will appear here")
 
 # -------------------- Footer & Navigation --------------------
 st.markdown("""
