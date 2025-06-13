@@ -750,7 +750,7 @@ if st.session_state.current_section == "routines":
             # Exact match for sides
             if y_loc == 0.1:
                 side = 'Left'
-            elif x_loc == 80:
+            elif y_loc == 80:
                 side = 'Right'
 
         pass_height = row.get('pass.height.name', 'Unknown')
