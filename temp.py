@@ -931,7 +931,7 @@ if st.session_state.current_section == "routines":
         file_name="filtered_corner_passes.csv",
         key="download_button"
     )
-st.write("Corner side counts:", corner_summary['side'].value_counts())
+
 
 
 # -------------------- PENALTY ANALYSIS SECTION --------------------
