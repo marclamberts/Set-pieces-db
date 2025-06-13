@@ -853,7 +853,7 @@ elif st.session_state.current_section == "routines":
     if valid_locations.empty:
         st.info("No valid location data found for corner passes.")
     else:
-        pitch = Pitch(pitch_type='statsbomb', pitch_color='grass', line_color='white')
+        pitch = Pitch(pitch_type='statsbomb', pitch_color='white', line_color='black')
         fig, ax = pitch.draw(figsize=(12, 8))
     
         colors = {
