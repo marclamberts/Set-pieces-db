@@ -712,13 +712,15 @@ elif st.session_state.current_section == "routines":
         st.stop()
 
     # --- Classify corner passes ---
-    results = []
+   results = []
     for idx, row in corner_passes.iterrows():
         side = 'Unknown'
         if isinstance(row.get('location', None), (list, tuple)) and len(row['location']) >= 1:
-            if row['location'][0] <= 10:  # Near x = 0 → Left corner
+            x_location = row['location'][0]
+            # This is the exact mapping, not an approximation
+            if x_location == 0.1:
                 side = 'Left'
-            elif row['location'][0] >= 70:  # Near x = 80 → Right corner
+            elif x_location == 80:
                 side = 'Right'
 
         pass_height = row.get('pass.height.name', 'Unknown')
