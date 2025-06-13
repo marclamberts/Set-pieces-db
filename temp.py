@@ -713,64 +713,64 @@ elif st.session_state.current_section == "routines":
 
     # --- Classify corner passes ---
    results = []
-    for idx, row in corner_passes.iterrows():
-        side = 'Unknown'
-        if isinstance(row.get('location', None), (list, tuple)) and len(row['location']) >= 1:
-            x_location = row['location'][0]
-            # This is the exact mapping, not an approximation
-            if x_location == 0.1:
-                side = 'Left'
-            elif x_location == 80:
-                side = 'Right'
+for idx, row in corner_passes.iterrows():
+    side = 'Unknown'
+    if isinstance(row.get('location', None), (list, tuple)) and len(row['location']) >= 1:
+        x_location = row['location'][0]
+        # This is the exact mapping, not an approximation
+        if x_location == 0.1:
+            side = 'Left'
+        elif x_location == 80:
+            side = 'Right'
 
-        pass_height = row.get('pass.height.name', 'Unknown')
-        pass_body_part = row.get('pass.body_part.name', 'Unknown')
-        pass_outcome = row.get('pass.outcome.name', 'Unknown')
-        pass_technique = row.get('pass.technique.name', 'Unknown')
+    pass_height = row.get('pass.height.name', 'Unknown')
+    pass_body_part = row.get('pass.body_part.name', 'Unknown')
+    pass_outcome = row.get('pass.outcome.name', 'Unknown')
+    pass_technique = row.get('pass.technique.name', 'Unknown')
 
-        start_team = row.get('possession_team.id', row.get('team.id', None))
-        subsequent_events = df_corner.iloc[idx + 1:]
+    start_team = row.get('possession_team.id', row.get('team.id', None))
+    subsequent_events = df_corner.iloc[idx + 1:]
 
-        if start_team is not None:
-            same_possession = subsequent_events[
-                subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == start_team
-            ]
+    if start_team is not None:
+        same_possession = subsequent_events[
+            subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == start_team
+        ]
+    else:
+        same_possession = pd.DataFrame()
+
+    if same_possession.empty:
+        classification = 'No first contact - no shot'
+    else:
+        first_contact = same_possession.iloc[0]
+        if first_contact['event_type'] == 'Shot':
+            classification = 'First contact - direct shot'
         else:
-            same_possession = pd.DataFrame()
-
-        if same_possession.empty:
-            classification = 'No first contact - no shot'
-        else:
-            first_contact = same_possession.iloc[0]
-            if first_contact['event_type'] == 'Shot':
-                classification = 'First contact - direct shot'
+            shots_nearby = same_possession.head(3)[same_possession.head(3)['event_type'] == 'Shot']
+            if not shots_nearby.empty:
+                classification = 'First contact - shot within 3 seconds'
             else:
-                shots_nearby = same_possession.head(3)[same_possession.head(3)['event_type'] == 'Shot']
-                if not shots_nearby.empty:
-                    classification = 'First contact - shot within 3 seconds'
+                any_shot = same_possession[same_possession['event_type'] == 'Shot']
+                if not any_shot.empty:
+                    classification = 'No first contact - shot'
                 else:
-                    any_shot = same_possession[same_possession['event_type'] == 'Shot']
-                    if not any_shot.empty:
-                        classification = 'No first contact - shot'
-                    else:
-                        classification = 'First contact - no shot'
+                    classification = 'First contact - no shot'
 
-        results.append({
-            'corner_index': idx,
-            'classification': classification,
-            'side': side,
-            'pass_height': pass_height,
-            'pass_body_part': pass_body_part,
-            'pass_outcome': pass_outcome,
-            'pass_technique': pass_technique,
-            'pass_end_x': row.get('pass_end_x', None),
-            'pass_end_y': row.get('pass_end_y', None),
-            'team.name': row.get('team.name', 'Unknown'),
-            'player.name': row.get('player.name', 'Unknown'),
-            'Match': row.get('Match', 'Unknown'),
-            'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
-            'season.season_name': row.get('season.season_name', 'Unknown')
-        })
+    results.append({
+        'corner_index': idx,
+        'classification': classification,
+        'side': side,
+        'pass_height': pass_height,
+        'pass_body_part': pass_body_part,
+        'pass_outcome': pass_outcome,
+        'pass_technique': pass_technique,
+        'pass_end_x': row.get('pass_end_x', None),
+        'pass_end_y': row.get('pass_end_y', None),
+        'team.name': row.get('team.name', 'Unknown'),
+        'player.name': row.get('player.name', 'Unknown'),
+        'Match': row.get('Match', 'Unknown'),
+        'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
+        'season.season_name': row.get('season.season_name', 'Unknown')
+    })
 
     corner_summary = pd.DataFrame(results)
 
