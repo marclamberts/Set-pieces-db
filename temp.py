@@ -6,7 +6,7 @@ import ast
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from mplsoccer import Pitch
+from mplsoccer import Pitch, VerticalPitch
 import matplotlib.pyplot as plt
 
 st.set_page_config(
@@ -853,7 +853,7 @@ elif st.session_state.current_section == "routines":
     if valid_locations.empty:
         st.info("No valid location data found for corner passes.")
     else:
-        pitch = Pitch(pitch_type='statsbomb', pitch_color='white', line_color='black')
+        pitch = VerticalPitch(pitch_type='statsbomb', pitch_color='white', half=True, line_color='black')
         fig, ax = pitch.draw(figsize=(12, 8))
     
         colors = {
