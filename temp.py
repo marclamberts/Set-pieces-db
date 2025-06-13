@@ -848,30 +848,26 @@ elif st.session_state.current_section == "routines":
 
     # Calculate xG stats
 # Initialize
+# Initialize
 xg_total = 0.0
 total_shots = 0
 
 for _, row in filtered_corners.iterrows():
     corner_index = row['corner_index']
     try:
-        possession_team = df_corner.loc[corner_index, 'possession_team.id'] if 'possession_team.id' in df_corner.columns else df_corner.loc[corner_index].get('team.id', None)
+        possession_id = df_corner.loc[corner_index, 'possession']  # possession id is key here
     except KeyError:
-        possession_team = None
+        possession_id = None
 
-    if possession_team is not None:
-        # Get all events after this corner
+    if possession_id is not None:
+        # Get all events in the same possession after the corner
         subsequent_events = df_corner.iloc[corner_index + 1:]
-
-        # Filter events in same possession
-        same_possession = subsequent_events[
-            subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
-        ]
+        same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
 
         # Get shots only
         shots = same_possession[same_possession['event_type'] == 'Shot']
 
         if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
-            # Sum xG for these shots
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
             xg_total += valid_xg_values.sum()
             total_shots += len(valid_xg_values)
@@ -887,6 +883,7 @@ if total_shots > 0:
     st.metric("Avg xG per Shot", f"{(xg_total / total_shots):.3f}")
 else:
     st.metric("Avg xG per Shot", "N/A")
+
 
 
 # Plot on mplsoccer pitch
