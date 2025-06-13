@@ -935,7 +935,6 @@ st.download_button(
     key="download_button"
 )
 
-# -------------------- PENALTY ANALYSIS SECTION --------------------
 elif st.session_state.current_section == "penalties":
     st.title("Penalty Kick Analysis")
     st.markdown("This section is under development. Coming soon with detailed penalty statistics and visualizations.")
