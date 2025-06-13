@@ -847,8 +847,8 @@ elif st.session_state.current_section == "routines":
         st.stop()
 
     # Calculate xG stats
+# Initialize
 xg_total = 0.0
-xg_per_corner = []
 total_shots = 0
 
 for _, row in filtered_corners.iterrows():
@@ -858,40 +858,36 @@ for _, row in filtered_corners.iterrows():
     except KeyError:
         possession_team = None
 
-    xg_value = 0.0
-    shot_count = 0
-
     if possession_team is not None:
+        # Get all events after this corner
         subsequent_events = df_corner.iloc[corner_index + 1:]
+
+        # Filter events in same possession
         same_possession = subsequent_events[
             subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
         ]
+
+        # Get shots only
         shots = same_possession[same_possession['event_type'] == 'Shot']
 
         if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
+            # Sum xG for these shots
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
-            xg_value = valid_xg_values.sum()
-            shot_count = len(valid_xg_values)
+            xg_total += valid_xg_values.sum()
+            total_shots += len(valid_xg_values)
 
-    xg_total += xg_value
-    total_shots += shot_count
-    xg_per_corner.append(xg_value)
-
-if len(xg_per_corner) == len(filtered_corners):
-    filtered_corners['xg_per_corner'] = xg_per_corner
-else:
-    filtered_corners['xg_per_corner'] = [0.0] * len(filtered_corners)
-
-# Display metrics
+# Display the metrics
 st.title("Corner Kick Analysis")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 col1.metric("Total Corners", len(filtered_corners))
 col2.metric("Total Shots from Corners", total_shots)
 col3.metric("Total xG Generated", f"{xg_total:.2f}")
+
 if total_shots > 0:
-    col4.metric("Avg xG per Shot", f"{(xg_total / total_shots):.3f}")
+    st.metric("Avg xG per Shot", f"{(xg_total / total_shots):.3f}")
 else:
-    col4.metric("Avg xG per Shot", "N/A")
+    st.metric("Avg xG per Shot", "N/A")
+
 
 # Plot on mplsoccer pitch
 valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
