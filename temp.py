@@ -647,35 +647,35 @@ if st.session_state.current_section == "shots":
 # -------------------- CORNER ROUTINES SECTION --------------------
 elif st.session_state.current_section == "routines":
     df_german = load_german_data()
-    
+
     if df_german.empty:
         st.error("No data loaded for corner routines analysis.")
         st.stop()
-    
+
     # --- Sidebar Filters ---
     st.sidebar.markdown("### Corner Filter Options")
-    
+
     corner_team_filter = st.sidebar.selectbox(
         "Team (Corners)",
         ["All"] + sorted(df_german["team.name"].dropna().unique().tolist()),
         key="corner_team_filter"
     )
-    
+
     corner_technique_filter = st.sidebar.selectbox(
         "Corner Technique",
         ["All"] + sorted(df_german["pass.technique.name"].dropna().unique().tolist()),
         key="corner_technique_filter"
     )
-    
+
     corner_side_filter = st.sidebar.selectbox(
         "Corner Side",
         ["All", "Left", "Right"],
         key="corner_side_filter"
     )
-    
+
     # --- Prepare corner data ---
     df_corner = df_german.copy()
-    
+
     def parse_location_string(loc):
         if pd.isna(loc):
             return [None, None]
@@ -684,7 +684,7 @@ elif st.session_state.current_section == "routines":
             return [float(parts[0].strip()), float(parts[1].strip())]
         except:
             return [None, None]
-    
+
     if 'pass.end_location' in df_corner.columns:
         locations = df_corner['pass.end_location'].astype(str).apply(parse_location_string)
         df_corner['pass_end_x'] = locations.apply(lambda x: x[0])
@@ -692,40 +692,50 @@ elif st.session_state.current_section == "routines":
     else:
         df_corner['pass_end_x'] = None
         df_corner['pass_end_y'] = None
-    
+
     if 'index' in df_corner.columns:
         df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
     elif 'event_id' in df_corner.columns:
         df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
-    
+
+    # Strip potential whitespace in column names
+    df_corner.columns = df_corner.columns.str.strip()
+
+    if 'event_type' not in df_corner.columns:
+        st.error("'event_type' column not found in the data.")
+        st.stop()
+
     corner_passes = df_corner[df_corner['event_type'] == 'CornerPass'].copy()
-    
+
     if corner_passes.empty:
         st.info("No corner passes found in the data.")
         st.stop()
-    
+
     # --- Classify corner passes ---
     results = []
     for idx, row in corner_passes.iterrows():
         side = 'Unknown'
-        if 'location' in row and isinstance(row['location'], (list, tuple)) and len(row['location']) >= 1:
-            side = 'Left' if row['location'][0] < 60 else 'Right'
-    
+        if isinstance(row.get('location', None), (list, tuple)) and len(row['location']) >= 1:
+            if row['location'][0] <= 10:  # Near x = 0 → Left corner
+                side = 'Left'
+            elif row['location'][0] >= 70:  # Near x = 80 → Right corner
+                side = 'Right'
+
         pass_height = row.get('pass.height.name', 'Unknown')
         pass_body_part = row.get('pass.body_part.name', 'Unknown')
         pass_outcome = row.get('pass.outcome.name', 'Unknown')
         pass_technique = row.get('pass.technique.name', 'Unknown')
-    
+
         start_team = row.get('possession_team.id', row.get('team.id', None))
         subsequent_events = df_corner.iloc[idx + 1:]
-    
+
         if start_team is not None:
             same_possession = subsequent_events[
                 subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == start_team
             ]
         else:
             same_possession = pd.DataFrame()
-    
+
         if same_possession.empty:
             classification = 'No first contact - no shot'
         else:
@@ -742,7 +752,7 @@ elif st.session_state.current_section == "routines":
                         classification = 'No first contact - shot'
                     else:
                         classification = 'First contact - no shot'
-    
+
         results.append({
             'corner_index': idx,
             'classification': classification,
@@ -759,37 +769,37 @@ elif st.session_state.current_section == "routines":
             'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
             'season.season_name': row.get('season.season_name', 'Unknown')
         })
-    
+
     corner_summary = pd.DataFrame(results)
-    
+
     # --- Additional Sidebar Filters ---
     pass_height_filter = st.sidebar.selectbox(
         "Pass Height",
         ["All"] + sorted(corner_summary["pass_height"].dropna().unique().tolist()),
         key="pass_height_filter"
     )
-    
+
     pass_body_part_filter = st.sidebar.selectbox(
         "Pass Body Part",
         ["All"] + sorted(corner_summary["pass_body_part"].dropna().unique().tolist()),
         key="pass_body_part_filter"
     )
-    
+
     pass_outcome_filter = st.sidebar.selectbox(
         "Pass Outcome",
         ["All"] + sorted(corner_summary["pass_outcome"].dropna().unique().tolist()),
         key="pass_outcome_filter"
     )
-    
+
     classification_filter = st.sidebar.selectbox(
         "Corner Outcome Classification",
         ["All"] + sorted(corner_summary["classification"].dropna().unique().tolist()),
         key="classification_filter"
     )
-    
+
     # --- Apply filters ---
     filtered_corners = corner_summary.copy()
-    
+
     if corner_team_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["team.name"] == corner_team_filter]
     if corner_technique_filter != "All":
@@ -804,50 +814,50 @@ elif st.session_state.current_section == "routines":
         filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == pass_outcome_filter]
     if classification_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["classification"] == classification_filter]
-    
+
     if filtered_corners.empty:
         st.info("No corners found for the selected filters.")
         st.stop()
-    
+
     # --- Calculate xG stats ---
     xg_total = 0.0
     xg_per_corner = []
-    
+
     for _, row in filtered_corners.iterrows():
         corner_index = row['corner_index']
         try:
             possession_team = df_corner.loc[corner_index, 'possession_team.id'] if 'possession_team.id' in df_corner.columns else df_corner.loc[corner_index].get('team.id', None)
         except KeyError:
             possession_team = None
-    
+
         xg_value = 0.0
-    
+
         if possession_team is not None:
             subsequent_events = df_corner.iloc[corner_index + 1:]
             same_possession = subsequent_events[
                 subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == possession_team
             ]
             shots = same_possession[same_possession['event_type'] == 'Shot']
-    
+
             if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
                 valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
                 xg_value = valid_xg_values.sum()
-    
+
         xg_total += xg_value
         xg_per_corner.append(xg_value)
-    
+
     if len(xg_per_corner) == len(filtered_corners):
         filtered_corners['xg_per_corner'] = xg_per_corner
     else:
         filtered_corners['xg_per_corner'] = [0.0] * len(filtered_corners)
-    
+
     # --- Display metrics ---
     st.title("Corner Kick Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Corners", len(filtered_corners))
     col2.metric("Total xG Generated", f"{xg_total:.2f}")
     col3.metric("Avg xG per Corner", f"{(xg_total / len(filtered_corners)):.3f}")
-    
+
     # --- Plot on mplsoccer pitch ---
     valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
     if valid_locations.empty:
@@ -855,7 +865,7 @@ elif st.session_state.current_section == "routines":
     else:
         pitch = VerticalPitch(pitch_type='statsbomb', pitch_color='white', half=True, line_color='black')
         fig, ax = pitch.draw(figsize=(12, 8))
-    
+
         colors = {
             'First contact - direct shot': '#FF0000',
             'First contact - shot within 3 seconds': '#0000FF',
@@ -863,7 +873,7 @@ elif st.session_state.current_section == "routines":
             'First contact - no shot': '#FFA500',
             'No first contact - no shot': '#808080'
         }
-    
+
         for classification in valid_locations['classification'].unique():
             subset = valid_locations[valid_locations['classification'] == classification]
             pitch.scatter(
@@ -876,12 +886,12 @@ elif st.session_state.current_section == "routines":
                 linewidth=1,
                 alpha=0.8
             )
-    
+
         ax.legend(loc='upper right', fontsize=12, title='Classification')
         ax.set_title("Corner Pass End Locations by Classification", fontsize=16)
-    
+
         st.pyplot(fig)
-    
+
     # --- Download button ---
     st.download_button(
         "Download Filtered Data as CSV",
@@ -889,6 +899,7 @@ elif st.session_state.current_section == "routines":
         file_name="filtered_corner_passes.csv",
         key="download_button"
     )
+
 
 # -------------------- PENALTY ANALYSIS SECTION --------------------
 elif st.session_state.current_section == "penalties":
