@@ -261,7 +261,7 @@ def load_data():
 @st.cache_data(ttl=3600)
 def load_german_data():
     base_path = os.path.dirname(__file__)
-    return pd.read_excel(os.path.join(base_path, "ger.xlsx"))
+    return pd.read_excel(os.path.join(base_path, "corner_passes_and_shots.xlsx"))
 
 # -------------------- SHOTS ANALYSIS SECTION --------------------
 if st.session_state.current_section == "shots":
