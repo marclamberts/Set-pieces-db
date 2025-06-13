@@ -644,15 +644,20 @@ if st.session_state.current_section == "shots":
             if st.checkbox("Show full leaderboard data"):
                 st.dataframe(leaderboard_data)
 
+import pandas as pd
+import streamlit as st
+from mplsoccer import VerticalPitch
+import ast
+
 # -------------------- CORNER ROUTINES SECTION --------------------
-elif st.session_state.current_section == "routines":
-    df_german = load_german_data()
+if st.session_state.current_section == "routines":
+    df_german = load_german_data()  # Your data loading function
 
     if df_german.empty:
         st.error("No data loaded for corner routines analysis.")
         st.stop()
 
-    # --- Sidebar Filters ---
+    # Sidebar Filters
     st.sidebar.markdown("### Corner Filter Options")
 
     corner_team_filter = st.sidebar.selectbox(
@@ -673,10 +678,32 @@ elif st.session_state.current_section == "routines":
         key="corner_side_filter"
     )
 
-    # --- Prepare corner data ---
+    # Prepare corner data
     df_corner = df_german.copy()
 
-    def parse_location_string(loc):
+    # Parse location column into location_x and location_y
+    def parse_location(loc):
+        if pd.isna(loc):
+            return [None, None]
+        if isinstance(loc, str):
+            try:
+                loc_list = ast.literal_eval(loc)
+                if isinstance(loc_list, (list, tuple)) and len(loc_list) >= 2:
+                    return loc_list[:2]
+            except:
+                return [None, None]
+        elif isinstance(loc, (list, tuple)) and len(loc) >= 2:
+            return loc[:2]
+        return [None, None]
+
+    if 'location' in df_corner.columns:
+        df_corner[['location_x', 'location_y']] = df_corner['location'].apply(parse_location).apply(pd.Series)
+    else:
+        df_corner['location_x'] = None
+        df_corner['location_y'] = None
+
+    # Parse pass.end_location as well if needed
+    def parse_pass_end_location(loc):
         if pd.isna(loc):
             return [None, None]
         try:
@@ -686,13 +713,14 @@ elif st.session_state.current_section == "routines":
             return [None, None]
 
     if 'pass.end_location' in df_corner.columns:
-        locations = df_corner['pass.end_location'].astype(str).apply(parse_location_string)
+        locations = df_corner['pass.end_location'].astype(str).apply(parse_pass_end_location)
         df_corner['pass_end_x'] = locations.apply(lambda x: x[0])
         df_corner['pass_end_y'] = locations.apply(lambda x: x[1])
     else:
         df_corner['pass_end_x'] = None
         df_corner['pass_end_y'] = None
 
+    # Sort by index or event_id for sequence
     if 'index' in df_corner.columns:
         df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
     elif 'event_id' in df_corner.columns:
@@ -710,16 +738,19 @@ elif st.session_state.current_section == "routines":
         st.info("No corner passes found in the data.")
         st.stop()
 
-    # --- Classify corner passes ---
+    # Classify corner passes
     results = []
     for idx, row in corner_passes.iterrows():
         side = 'Unknown'
-        if isinstance(row.get('location', None), (list, tuple)) and len(row['location']) >= 1:
-            x_location = row['location'][0]
-            # This is the exact mapping, not an approximation
-            if x_location == 0.1:
+
+        x_loc = row.get('location_x')
+        y_loc = row.get('location_y')
+
+        if x_loc is not None and y_loc is not None:
+            # Exact match for sides
+            if y_loc == 0.1:
                 side = 'Left'
-            elif x_location == 80:
+            elif x_loc == 80:
                 side = 'Right'
 
         pass_height = row.get('pass.height.name', 'Unknown')
@@ -773,7 +804,7 @@ elif st.session_state.current_section == "routines":
 
     corner_summary = pd.DataFrame(results)
 
-    # --- Additional Sidebar Filters ---
+    # Additional Sidebar Filters
     pass_height_filter = st.sidebar.selectbox(
         "Pass Height",
         ["All"] + sorted(corner_summary["pass_height"].dropna().unique().tolist()),
@@ -798,7 +829,7 @@ elif st.session_state.current_section == "routines":
         key="classification_filter"
     )
 
-    # --- Apply filters ---
+    # Apply filters
     filtered_corners = corner_summary.copy()
 
     if corner_team_filter != "All":
@@ -820,7 +851,7 @@ elif st.session_state.current_section == "routines":
         st.info("No corners found for the selected filters.")
         st.stop()
 
-    # --- Calculate xG stats ---
+    # Calculate xG stats
     xg_total = 0.0
     xg_per_corner = []
 
@@ -852,14 +883,14 @@ elif st.session_state.current_section == "routines":
     else:
         filtered_corners['xg_per_corner'] = [0.0] * len(filtered_corners)
 
-    # --- Display metrics ---
+    # Display metrics
     st.title("Corner Kick Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Corners", len(filtered_corners))
     col2.metric("Total xG Generated", f"{xg_total:.2f}")
     col3.metric("Avg xG per Corner", f"{(xg_total / len(filtered_corners)):.3f}")
 
-    # --- Plot on mplsoccer pitch ---
+    # Plot on mplsoccer pitch
     valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
     if valid_locations.empty:
         st.info("No valid location data found for corner passes.")
@@ -893,13 +924,14 @@ elif st.session_state.current_section == "routines":
 
         st.pyplot(fig)
 
-    # --- Download button ---
+    # Download button
     st.download_button(
         "Download Filtered Data as CSV",
         data=filtered_corners.to_csv(index=False),
         file_name="filtered_corner_passes.csv",
         key="download_button"
     )
+st.write("Corner side counts:", corner_summary['side'].value_counts())
 
 
 # -------------------- PENALTY ANALYSIS SECTION --------------------
