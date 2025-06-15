@@ -650,7 +650,6 @@ elif st.session_state.current_section == "routines":
     import pandas as pd
     import streamlit as st
     from plotly import express as px
-    import plotly.graph_objects as go
 
     df_german = load_german_data()
 
@@ -840,6 +839,7 @@ elif st.session_state.current_section == "routines":
         key="classification_filter"
     )
     
+    # Additional filters for Team, Nation, League
     team_filter = st.sidebar.selectbox(
         "Filter by Team",
         ["All"] + sorted(corner_summary["team.name"].dropna().unique().tolist()),
@@ -851,6 +851,7 @@ elif st.session_state.current_section == "routines":
         ["All"] + sorted(corner_summary["competition.competition_name"].dropna().unique().tolist()),
         key="league_filter"
     )
+
 
     # Apply filters
     filtered_corners = corner_summary.copy()
@@ -869,115 +870,123 @@ elif st.session_state.current_section == "routines":
         filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == pass_outcome_filter]
     if classification_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["classification"] == classification_filter]
+        # New filters for Team, Nation, League
     if team_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["team.name"] == team_filter]
     if league_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == league_filter]
+    
 
     if filtered_corners.empty:
         st.info("No corners found for the selected filters.")
         st.stop()
 
-    # Calculate total shots and xG stats per unique corner possession
+        # Calculate total shots and xG stats per unique corner possession
     total_shots = 0
     total_xg = 0.0
     processed_possessions = set()
-
+    
     for _, row in filtered_corners.iterrows():
         corner_index = row['corner_index']
         possession_id = df_corner.loc[corner_index, 'possession']
-
+        
         # Skip if possession_id already counted
         if possession_id in processed_possessions:
             continue
-
+        
         processed_possessions.add(possession_id)
         subsequent_events = df_corner.iloc[corner_index + 1:]
         same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
-
         shots = same_possession[same_possession['event_type'] == 'Shot']
+        
         total_shots += len(shots)
+        
+        if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
+            valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
+            total_xg += valid_xg_values.sum()
 
-        if 'shot.statsbomb_xg' in shots.columns:
-            valid_xg = shots['shot.statsbomb_xg'].dropna().astype(float).sum()
-            total_xg += valid_xg
+        # Display metrics
+        st.title("Corner Kick Analysis")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Corners", len(filtered_corners))
+        col2.metric("Total Shots from Corners", total_shots)
+        col3.metric("Total xG Generated", f"{total_xg:.2f}")
+        
+        if total_shots > 0:
+            st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
+        else:
+            st.metric("Avg xG per Shot", "N/A")
 
-    st.title("Corner Kick Analysis")
 
-    st.metric("Total Shots from Corners (Filtered)", total_shots)
-    st.metric("Total Expected Goals (xG) from Corners (Filtered)", round(total_xg, 3))
 
-    # Define pitch dimensions and layout for vertical pitch
-    pitch_length = 120
-    pitch_width = 80
+    import plotly.graph_objects as go
 
-    fig = go.Figure()
-
-    # Scatter plot of corner pass end locations
-    df_plot = filtered_corners.copy()
-    # We assume vertical pitch orientation:
-    # x-axis: pitch width (0 to 80)
-    # y-axis: pitch length (0 to 120)
-    fig.add_trace(go.Scatter(
-        x=df_plot['pass_end_y'],  # pass_end_y corresponds to x-axis (width)
-        y=df_plot['pass_end_x'],  # pass_end_x corresponds to y-axis (length)
-        mode='markers',
-        marker=dict(
-            size=8,
-            color=df_plot['classification'].astype('category').cat.codes,
-            colorscale='Viridis',
-            showscale=True,
-            colorbar=dict(title='Corner Outcome')
-        ),
-        text=df_plot.apply(lambda r: f"Team: {r['team.name']}<br>Player: {r['player.name']}<br>Classification: {r['classification']}", axis=1),
-        hoverinfo='text'
-    ))
-
-    # Add pitch shapes for vertical pitch (attacking half)
-    fig.update_layout(
-        shapes=[
-            # Outer pitch boundary (attacking half)
-            dict(type="rect", x0=0, y0=60, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
-            # Penalty area
-            dict(type="rect", x0=18, y0=102, x1=pitch_width - 18, y1=pitch_length, line=dict(color="black", width=2)),
-            # Six-yard box
-            dict(type="rect", x0=(pitch_width / 2) - 9, y0=114, x1=(pitch_width / 2) + 9, y1=pitch_length, line=dict(color="black", width=2)),
-            # Goal line
-            dict(type="line", x0=(pitch_width / 2) - 3.66, y0=pitch_length, x1=(pitch_width / 2) + 3.66, y1=pitch_length, line=dict(color="black", width=4)),
-            # Penalty spot
-            dict(type="circle",
-                 x0=(pitch_width / 2) - 0.5,
-                 y0=108 - 0.5,
-                 x1=(pitch_width / 2) + 0.5,
-                 y1=108 + 0.5,
-                 line=dict(color="black", width=2)),
-            # Penalty arc (top half)
-            dict(type="path",
-                 path=f'M {pitch_width / 2 - 10},102 A 10,10 0 0,1 {pitch_width / 2 + 10},102',
-                 line=dict(color="black", width=2))
-        ],
-        xaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            range=[-5, pitch_width + 5],
-            scaleanchor='y',
-            scaleratio=1,
-        ),
-        yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            range=[60, pitch_length + 5],
-        ),
-        plot_bgcolor='white',
-        width=700,
-        height=1000,
-        title="Corner Pass End Locations on Attacking Half (Vertical Pitch)",
-        showlegend=False,
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
+    
+    if valid_locations.empty:
+        st.info("No valid location data found for corner passes.")
+    else:
+        color_map = {
+            'First contact - direct shot': 'red',
+            'First contact - shot within 3 seconds': 'blue',
+            'No first contact - shot': 'green',
+            'First contact - no shot': 'orange',
+            'No first contact - no shot': 'gray'
+        }
+    
+        # Pitch dimensions for attacking half
+        pitch_length = 120
+        pitch_width = 80
+    
+        fig = go.Figure()
+    
+        # Add pitch outline and key features for attacking half
+        fig.update_layout(
+            shapes=[
+                # Outer boundary (attacking half)
+                dict(type="rect", x0=0, y0=60, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+                # Penalty area
+                dict(type="rect", x0=18, y0=102, x1=pitch_width - 18, y1=pitch_length, line=dict(color="black", width=2)),
+                # Six-yard box
+                dict(type="rect", x0=(pitch_width / 2) - 9, y0=114, x1=(pitch_width / 2) + 9, y1=pitch_length, line=dict(color="black", width=2)),
+                # Goal line
+                dict(type="line", x0=(pitch_width / 2) - 3.66, y0=pitch_length, x1=(pitch_width / 2) + 3.66, y1=pitch_length, line=dict(color="black", width=4)),
+                # Penalty spot
+                dict(type="circle", x0=(pitch_width / 2) - 0.5, y0=108 - 0.5, x1=(pitch_width / 2) + 0.5, y1=108 + 0.5, line=dict(color="black", width=2)),
+                # Penalty arc
+                dict(type="path",
+                     path=f'M {pitch_width / 2 - 10},{102} A 10,10 0 0,1 {pitch_width / 2 + 10},{102}',
+                     line=dict(color="black", width=2)),
+            ]
+        )
+    
+        # Plot corner pass end locations
+        for classification, df_group in valid_locations.groupby('classification'):
+            fig.add_trace(go.Scatter(
+                x=df_group['pass_end_y'],  # Swap axes for vertical pitch
+                y=df_group['pass_end_x'],
+                mode='markers',
+                name=classification,
+                marker=dict(size=10, color=color_map.get(classification, 'gray'), opacity=0.8, line=dict(width=1, color='black')),
+                hovertemplate=
+                    'Team: %{customdata[0]}<br>' +
+                    'Player: %{customdata[1]}<br>' +
+                    'Classification: %{customdata[2]}<br>' +
+                    'xG: %{customdata[3]:.2f}<extra></extra>',
+                customdata=df_group[['team.name', 'player.name', 'classification', 'xG']].values
+            ))
+    
+        fig.update_layout(
+            title='Corner Pass End Locations (Attacking Half - Vertical Pitch)',
+            showlegend=True,
+            width=700,
+            height=1000,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_width + 5]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[55, pitch_length + 5]),
+            plot_bgcolor='white'
+        )
+    
+        st.plotly_chart(fig, use_container_width=True)
 
 
 
