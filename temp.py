@@ -809,6 +809,8 @@ elif st.session_state.current_section == "routines":
             'Match': row.get('Match', 'Unknown'),
             'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
             'season.season_name': row.get('season.season_name', 'Unknown'),
+            'League': row.get('League', 'Unknown'),
+            'Nation': row.get('Nation', 'Unknown'),
             'xG': xg_sum
         })
 
