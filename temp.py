@@ -884,6 +884,7 @@ elif st.session_state.current_section == "routines":
     else:
         st.metric("Avg xG per Shot", "N/A")
 
+
     import plotly.graph_objects as go
 
     valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
@@ -899,41 +900,40 @@ elif st.session_state.current_section == "routines":
             'No first contact - no shot': 'gray'
         }
     
-        # Create pitch
-        pitch_length = 120
+        # Define pitch dimensions (half pitch)
+        pitch_length = 60  # Half of 120
         pitch_width = 80
     
         fig = go.Figure()
     
-        # Add pitch outline
+        # Add half-pitch outline and key features
         fig.update_layout(
             shapes=[
-                # Outer lines
-                dict(type="rect", x0=0, y0=0, x1=pitch_length, y1=pitch_width, line=dict(color="black", width=2)),
-                # Center line
-                dict(type="line", x0=pitch_length / 2, y0=0, x1=pitch_length / 2, y1=pitch_width, line=dict(color="black", width=2)),
-                # Left penalty area
-                dict(type="rect", x0=0, y0=18, x1=18, y1=pitch_width - 18, line=dict(color="black", width=2)),
-                # Right penalty area
-                dict(type="rect", x0=pitch_length - 18, y0=18, x1=pitch_length, y1=pitch_width - 18, line=dict(color="black", width=2)),
-                # Left six-yard box
-                dict(type="rect", x0=0, y0=(pitch_width / 2) - 9, x1=6, y1=(pitch_width / 2) + 9, line=dict(color="black", width=2)),
-                # Right six-yard box
-                dict(type="rect", x0=pitch_length - 6, y0=(pitch_width / 2) - 9, x1=pitch_length, y1=(pitch_width / 2) + 9, line=dict(color="black", width=2)),
-                # Center circle
-                dict(type="circle", x0=pitch_length / 2 - 10, y0=pitch_width / 2 - 10,
-                     x1=pitch_length / 2 + 10, y1=pitch_width / 2 + 10, line=dict(color="black", width=2)),
+                # Outer boundary
+                dict(type="rect", x0=0, y0=0, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+                # Penalty area
+                dict(type="rect", x0=18, y0=0, x1=pitch_width - 18, y1=18, line=dict(color="black", width=2)),
+                # Six-yard box
+                dict(type="rect", x0=(pitch_width / 2) - 9, y0=0, x1=(pitch_width / 2) + 9, y1=6, line=dict(color="black", width=2)),
+                # Goal line
+                dict(type="line", x0=(pitch_width / 2) - 3.66, y0=0, x1=(pitch_width / 2) + 3.66, y1=0, line=dict(color="black", width=4)),
+                # Penalty spot
+                dict(type="circle", x0=(pitch_width / 2) - 0.5, y0=12 - 0.5, x1=(pitch_width / 2) + 0.5, y1=12 + 0.5, line=dict(color="black", width=2)),
+                # Penalty arc
+                dict(type="path",
+                     path=f'M {pitch_width / 2 - 10},{18} A 10,10 0 0,1 {pitch_width / 2 + 10},{18}',
+                     line=dict(color="black", width=2)),
             ]
         )
     
         # Plot corner pass end locations
         for classification, df_group in valid_locations.groupby('classification'):
             fig.add_trace(go.Scatter(
-                x=df_group['pass_end_x'],
-                y=df_group['pass_end_y'],
+                x=df_group['pass_end_y'],  # Swap axes for vertical pitch
+                y=df_group['pass_end_x'],
                 mode='markers',
                 name=classification,
-                marker=dict(size=10, color=color_map.get(classification, 'gray'), opacity=0.8),
+                marker=dict(size=10, color=color_map.get(classification, 'gray'), opacity=0.8, line=dict(width=1, color='black')),
                 hovertemplate=
                     'Team: %{customdata[0]}<br>' +
                     'Player: %{customdata[1]}<br>' +
@@ -943,12 +943,12 @@ elif st.session_state.current_section == "routines":
             ))
     
         fig.update_layout(
-            title='Corner Pass End Locations on Football Pitch',
+            title='Corner Pass End Locations (Vertical Half-Pitch)',
             showlegend=True,
-            width=1000,
-            height=700,
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_length + 5]),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x", scaleratio=1, range=[-5, pitch_width + 5]),
+            width=700,
+            height=1000,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_width + 5]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_length + 5]),
             plot_bgcolor='white'
         )
     
