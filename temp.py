@@ -884,8 +884,10 @@ elif st.session_state.current_section == "routines":
     else:
         st.metric("Avg xG per Shot", "N/A")
 
-    # Plot using Plotly
+    import plotly.graph_objects as go
+
     valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
+    
     if valid_locations.empty:
         st.info("No valid location data found for corner passes.")
     else:
@@ -896,36 +898,62 @@ elif st.session_state.current_section == "routines":
             'First contact - no shot': 'orange',
             'No first contact - no shot': 'gray'
         }
-
-        fig = px.scatter(
-            valid_locations,
-            x='pass_end_x',
-            y='pass_end_y',
-            color='classification',
-            color_discrete_map=color_map,
-            hover_data={
-                'team.name': True,
-                'player.name': True,
-                'xG': True,
-                'classification': True,
-                'pass_end_x': False,
-                'pass_end_y': False
-            },
-            labels={'team.name': 'Team', 'player.name': 'Player', 'xG': 'xG'}
-        )
-
+    
+        # Create pitch
+        pitch_length = 120
+        pitch_width = 80
+    
+        fig = go.Figure()
+    
+        # Add pitch outline
         fig.update_layout(
-            title='Corner Pass End Locations by Classification',
-            yaxis=dict(scaleanchor="x", scaleratio=1),
-            xaxis_title='Pitch X',
-            yaxis_title='Pitch Y',
-            height=700,
-            showlegend=True
+            shapes=[
+                # Outer lines
+                dict(type="rect", x0=0, y0=0, x1=pitch_length, y1=pitch_width, line=dict(color="black", width=2)),
+                # Center line
+                dict(type="line", x0=pitch_length / 2, y0=0, x1=pitch_length / 2, y1=pitch_width, line=dict(color="black", width=2)),
+                # Left penalty area
+                dict(type="rect", x0=0, y0=18, x1=18, y1=pitch_width - 18, line=dict(color="black", width=2)),
+                # Right penalty area
+                dict(type="rect", x0=pitch_length - 18, y0=18, x1=pitch_length, y1=pitch_width - 18, line=dict(color="black", width=2)),
+                # Left six-yard box
+                dict(type="rect", x0=0, y0=(pitch_width / 2) - 9, x1=6, y1=(pitch_width / 2) + 9, line=dict(color="black", width=2)),
+                # Right six-yard box
+                dict(type="rect", x0=pitch_length - 6, y0=(pitch_width / 2) - 9, x1=pitch_length, y1=(pitch_width / 2) + 9, line=dict(color="black", width=2)),
+                # Center circle
+                dict(type="circle", x0=pitch_length / 2 - 10, y0=pitch_width / 2 - 10,
+                     x1=pitch_length / 2 + 10, y1=pitch_width / 2 + 10, line=dict(color="black", width=2)),
+            ]
         )
-
-        fig.update_yaxes(autorange="reversed")
-
+    
+        # Plot corner pass end locations
+        for classification, df_group in valid_locations.groupby('classification'):
+            fig.add_trace(go.Scatter(
+                x=df_group['pass_end_x'],
+                y=df_group['pass_end_y'],
+                mode='markers',
+                name=classification,
+                marker=dict(size=10, color=color_map.get(classification, 'gray'), opacity=0.8),
+                hovertemplate=
+                    'Team: %{customdata[0]}<br>' +
+                    'Player: %{customdata[1]}<br>' +
+                    'Classification: %{customdata[2]}<br>' +
+                    'xG: %{customdata[3]:.2f}<extra></extra>',
+                customdata=df_group[['team.name', 'player.name', 'classification', 'xG']].values
+            ))
+    
+        fig.update_layout(
+            title='Corner Pass End Locations on Football Pitch',
+            showlegend=True,
+            width=1000,
+            height=700,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_length + 5]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x", scaleratio=1, range=[-5, pitch_width + 5]),
+            plot_bgcolor='white'
+        )
+    
         st.plotly_chart(fig, use_container_width=True)
+
 
     # Download button
     st.download_button(
