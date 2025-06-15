@@ -900,28 +900,28 @@ elif st.session_state.current_section == "routines":
             'No first contact - no shot': 'gray'
         }
     
-        # Define pitch dimensions (half pitch)
-        pitch_length = 60  # Half of 120
+        # Pitch dimensions for attacking half
+        pitch_length = 120
         pitch_width = 80
     
         fig = go.Figure()
     
-        # Add half-pitch outline and key features
+        # Add pitch outline and key features for attacking half
         fig.update_layout(
             shapes=[
-                # Outer boundary
-                dict(type="rect", x0=0, y0=0, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+                # Outer boundary (attacking half)
+                dict(type="rect", x0=0, y0=60, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
                 # Penalty area
-                dict(type="rect", x0=18, y0=0, x1=pitch_width - 18, y1=18, line=dict(color="black", width=2)),
+                dict(type="rect", x0=18, y0=102, x1=pitch_width - 18, y1=pitch_length, line=dict(color="black", width=2)),
                 # Six-yard box
-                dict(type="rect", x0=(pitch_width / 2) - 9, y0=0, x1=(pitch_width / 2) + 9, y1=6, line=dict(color="black", width=2)),
+                dict(type="rect", x0=(pitch_width / 2) - 9, y0=114, x1=(pitch_width / 2) + 9, y1=pitch_length, line=dict(color="black", width=2)),
                 # Goal line
-                dict(type="line", x0=(pitch_width / 2) - 3.66, y0=0, x1=(pitch_width / 2) + 3.66, y1=0, line=dict(color="black", width=4)),
+                dict(type="line", x0=(pitch_width / 2) - 3.66, y0=pitch_length, x1=(pitch_width / 2) + 3.66, y1=pitch_length, line=dict(color="black", width=4)),
                 # Penalty spot
-                dict(type="circle", x0=(pitch_width / 2) - 0.5, y0=12 - 0.5, x1=(pitch_width / 2) + 0.5, y1=12 + 0.5, line=dict(color="black", width=2)),
+                dict(type="circle", x0=(pitch_width / 2) - 0.5, y0=108 - 0.5, x1=(pitch_width / 2) + 0.5, y1=108 + 0.5, line=dict(color="black", width=2)),
                 # Penalty arc
                 dict(type="path",
-                     path=f'M {pitch_width / 2 - 10},{18} A 10,10 0 0,1 {pitch_width / 2 + 10},{18}',
+                     path=f'M {pitch_width / 2 - 10},{102} A 10,10 0 0,1 {pitch_width / 2 + 10},{102}',
                      line=dict(color="black", width=2)),
             ]
         )
@@ -943,16 +943,17 @@ elif st.session_state.current_section == "routines":
             ))
     
         fig.update_layout(
-            title='Corner Pass End Locations (Vertical Half-Pitch)',
+            title='Corner Pass End Locations (Attacking Half - Vertical Pitch)',
             showlegend=True,
             width=700,
             height=1000,
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_width + 5]),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_length + 5]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[55, pitch_length + 5]),
             plot_bgcolor='white'
         )
     
         st.plotly_chart(fig, use_container_width=True)
+
 
 
     # Download button
