@@ -904,7 +904,7 @@ elif st.session_state.current_section == "routines":
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
             total_xg += valid_xg_values.sum()
     
-    # Metrics displayed only once here — after summing all shots and xG
+    # Metrics display outside loop
     st.title("Corner Kick Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Corners", len(filtered_corners))
@@ -915,10 +915,7 @@ elif st.session_state.current_section == "routines":
         st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
     else:
         st.metric("Avg xG per Shot", "N/A")
-    
-    # Show filtered corners table only (not all corners)
-    st.markdown("### Filtered Corners Detail")
-    st.dataframe(filtered_corners.reset_index(drop=True))
+
 
 
 
