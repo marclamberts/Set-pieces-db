@@ -846,12 +846,6 @@ elif st.session_state.current_section == "routines":
         key="team_filter"
     )
     
-    nation_filter = st.sidebar.selectbox(
-        "Filter by Nation",
-        ["All"] + sorted(corner_summary["Nation"].dropna().unique().tolist()),
-        key="nation_filter"
-    )
-    
     league_filter = st.sidebar.selectbox(
         "Filter by League",
         ["All"] + sorted(corner_summary["competition.competition_name"].dropna().unique().tolist()),
@@ -879,8 +873,6 @@ elif st.session_state.current_section == "routines":
         # New filters for Team, Nation, League
     if team_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["team.name"] == team_filter]
-    if nation_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == nation_filter]
     if league_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == league_filter]
     
