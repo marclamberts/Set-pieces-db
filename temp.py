@@ -885,9 +885,8 @@ elif st.session_state.current_section == "routines":
     # If 'corner_index' doesn't exist, let's create it from the filtered dataframe index
     
     filtered_corners = filtered_corners.reset_index(drop=False).rename(columns={'index':'corner_index'})
-    
-    # Extract unique possessions from df_corner at these corner indices
-    unique_possessions = filtered_corners['corner_index'].apply(lambda idx: df_corner.loc[idx, 'possession']).unique()
+
+    unique_possessions = filtered_corners['corner_index'].apply(lambda idx: df_corner.loc[idx, 'possession']).dropna().unique()
     
     total_corners = len(unique_possessions)
     total_shots = 0
@@ -901,7 +900,6 @@ elif st.session_state.current_section == "routines":
         if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
             total_xg += shots['shot.statsbomb_xg'].dropna().astype(float).sum()
     
-    # Display metrics
     st.title("Corner Kick Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Unique Corners", total_corners)
@@ -912,6 +910,7 @@ elif st.session_state.current_section == "routines":
         st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
     else:
         st.metric("Avg xG per Shot", "N/A")
+
 
 
 
