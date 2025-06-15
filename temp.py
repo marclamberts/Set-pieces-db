@@ -882,7 +882,7 @@ elif st.session_state.current_section == "routines":
     if nation_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == nation_filter]
     if league_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["League"] == league_filter]
+        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == league_filter]
     
 
     if filtered_corners.empty:
