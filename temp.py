@@ -646,7 +646,12 @@ if st.session_state.current_section == "shots":
 
 # -------------------- CORNER ROUTINES SECTION --------------------
 elif st.session_state.current_section == "routines":
-    df_german = load_german_data()  # Your data loading function
+    import ast
+    import pandas as pd
+    import streamlit as st
+    from plotly import express as px
+
+    df_german = load_german_data()
 
     if df_german.empty:
         st.error("No data loaded for corner routines analysis.")
@@ -676,7 +681,6 @@ elif st.session_state.current_section == "routines":
     # Prepare corner data
     df_corner = df_german.copy()
 
-    # Parse location column into location_x and location_y
     def parse_location(loc):
         if pd.isna(loc):
             return [None, None]
@@ -697,7 +701,6 @@ elif st.session_state.current_section == "routines":
         df_corner['location_x'] = None
         df_corner['location_y'] = None
 
-    # Parse pass.end_location as well if needed
     def parse_pass_end_location(loc):
         if pd.isna(loc):
             return [None, None]
@@ -715,7 +718,6 @@ elif st.session_state.current_section == "routines":
         df_corner['pass_end_x'] = None
         df_corner['pass_end_y'] = None
 
-    # Sort by index or event_id for sequence
     if 'index' in df_corner.columns:
         df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
     elif 'event_id' in df_corner.columns:
@@ -737,12 +739,10 @@ elif st.session_state.current_section == "routines":
     results = []
     for idx, row in corner_passes.iterrows():
         side = 'Unknown'
-
         x_loc = row.get('location_x')
         y_loc = row.get('location_y')
 
         if x_loc is not None and y_loc is not None:
-            # Exact match for sides
             if y_loc == 0.1:
                 side = 'Left'
             elif y_loc == 80:
@@ -765,6 +765,7 @@ elif st.session_state.current_section == "routines":
 
         if same_possession.empty:
             classification = 'No first contact - no shot'
+            xg_sum = 0.0
         else:
             first_contact = same_possession.iloc[0]
             if first_contact['event_type'] == 'Shot':
@@ -780,6 +781,19 @@ elif st.session_state.current_section == "routines":
                     else:
                         classification = 'First contact - no shot'
 
+            # Calculate xG for this corner's possession
+            possession_id = row.get('possession', None)
+            if possession_id is not None:
+                same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
+                shots = same_possession[same_possession['event_type'] == 'Shot']
+                if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
+                    valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
+                    xg_sum = valid_xg_values.sum()
+                else:
+                    xg_sum = 0.0
+            else:
+                xg_sum = 0.0
+
         results.append({
             'corner_index': idx,
             'classification': classification,
@@ -794,7 +808,8 @@ elif st.session_state.current_section == "routines":
             'player.name': row.get('player.name', 'Unknown'),
             'Match': row.get('Match', 'Unknown'),
             'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
-            'season.season_name': row.get('season.season_name', 'Unknown')
+            'season.season_name': row.get('season.season_name', 'Unknown'),
+            'xG': xg_sum
         })
 
     corner_summary = pd.DataFrame(results)
@@ -846,96 +861,86 @@ elif st.session_state.current_section == "routines":
         st.info("No corners found for the selected filters.")
         st.stop()
 
-    # Calculate xG stats
-# Initialize
-# Initialize
-xg_total = 0.0
-total_shots = 0
+    # Calculate total xG stats
+    total_shots = 0
+    total_xg = filtered_corners['xG'].sum()
 
-for _, row in filtered_corners.iterrows():
-    corner_index = row['corner_index']
-    try:
-        possession_id = df_corner.loc[corner_index, 'possession']  # possession id is key here
-    except KeyError:
-        possession_id = None
-
-    if possession_id is not None:
-        # Get all events in the same possession after the corner
+    for _, row in filtered_corners.iterrows():
+        corner_index = row['corner_index']
+        possession_id = df_corner.loc[corner_index, 'possession']
         subsequent_events = df_corner.iloc[corner_index + 1:]
         same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
-
-        # Get shots only
         shots = same_possession[same_possession['event_type'] == 'Shot']
+        total_shots += len(shots)
 
-        if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
-            valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
-            xg_total += valid_xg_values.sum()
-            total_shots += len(valid_xg_values)
+    st.title("Corner Kick Analysis")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Corners", len(filtered_corners))
+    col2.metric("Total Shots from Corners", total_shots)
+    col3.metric("Total xG Generated", f"{total_xg:.2f}")
 
-# Display the metrics
-st.title("Corner Kick Analysis")
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Corners", len(filtered_corners))
-col2.metric("Total Shots from Corners", total_shots)
-col3.metric("Total xG Generated", f"{xg_total:.2f}")
+    if total_shots > 0:
+        st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
+    else:
+        st.metric("Avg xG per Shot", "N/A")
 
-if total_shots > 0:
-    st.metric("Avg xG per Shot", f"{(xg_total / total_shots):.3f}")
-else:
-    st.metric("Avg xG per Shot", "N/A")
+    # Plot using Plotly
+    valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
+    if valid_locations.empty:
+        st.info("No valid location data found for corner passes.")
+    else:
+        color_map = {
+            'First contact - direct shot': 'red',
+            'First contact - shot within 3 seconds': 'blue',
+            'No first contact - shot': 'green',
+            'First contact - no shot': 'orange',
+            'No first contact - no shot': 'gray'
+        }
 
-
-
-# Plot on mplsoccer pitch
-valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
-if valid_locations.empty:
-    st.info("No valid location data found for corner passes.")
-else:
-    pitch = VerticalPitch(pitch_type='statsbomb', pitch_color='white', half=True, line_color='black')
-    fig, ax = pitch.draw(figsize=(12, 8))
-
-    colors = {
-        'First contact - direct shot': '#FF0000',
-        'First contact - shot within 3 seconds': '#0000FF',
-        'No first contact - shot': '#00FF00',
-        'First contact - no shot': '#FFA500',
-        'No first contact - no shot': '#808080'
-    }
-
-    for classification in valid_locations['classification'].unique():
-        subset = valid_locations[valid_locations['classification'] == classification]
-        pitch.scatter(
-            subset['pass_end_x'], subset['pass_end_y'],
-            ax=ax,
-            s=100,
-            color=colors.get(classification, '#000000'),
-            label=classification,
-            edgecolors='black',
-            linewidth=1,
-            alpha=0.8
+        fig = px.scatter(
+            valid_locations,
+            x='pass_end_x',
+            y='pass_end_y',
+            color='classification',
+            color_discrete_map=color_map,
+            hover_data={
+                'team.name': True,
+                'player.name': True,
+                'xG': True,
+                'classification': True,
+                'pass_end_x': False,
+                'pass_end_y': False
+            },
+            labels={'team.name': 'Team', 'player.name': 'Player', 'xG': 'xG'}
         )
 
-    ax.legend(loc='upper right', fontsize=12, title='Classification')
-    ax.set_title("Corner Pass End Locations by Classification", fontsize=16)
+        fig.update_layout(
+            title='Corner Pass End Locations by Classification',
+            yaxis=dict(scaleanchor="x", scaleratio=1),
+            xaxis_title='Pitch X',
+            yaxis_title='Pitch Y',
+            height=700,
+            showlegend=True
+        )
 
-    st.pyplot(fig)
+        fig.update_yaxes(autorange="reversed")
 
-# Download button
-st.download_button(
-    "Download Filtered Data as CSV",
-    data=filtered_corners.to_csv(index=False),
-    file_name="filtered_corner_passes.csv",
-    key="download_button"
-)
+        st.plotly_chart(fig, use_container_width=True)
 
+    # Download button
+    st.download_button(
+        "Download Filtered Data as CSV",
+        data=filtered_corners.to_csv(index=False),
+        file_name="filtered_corner_passes.csv",
+        key="download_button"
+    )
 
-
-# -------------------- Footer & Navigation --------------------
-st.markdown("""
-    <div class="footer" style="text-align:center; margin-top: 50px;">
-        <p>© 2025 Football Analytics Team</p>
-        <button onclick="window.location.href='?section=None'" style="background-color: var(--fte-blue); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-            Back to Main Menu
-        </button>
-    </div>
-""", unsafe_allow_html=True)
+    # Footer & Navigation
+    st.markdown("""
+        <div class="footer" style="text-align:center; margin-top: 50px;">
+            <p>© 2025 Football Analytics Team</p>
+            <button onclick="window.location.href='?section=None'" style="background-color: var(--fte-blue); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Back to Main Menu
+            </button>
+        </div>
+    """, unsafe_allow_html=True)
