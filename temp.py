@@ -882,7 +882,7 @@ elif st.session_state.current_section == "routines":
         st.stop()
 
             # Calculate total shots and xG stats per unique corner possession
-        total_shots = 0
+    total_shots = 0
     total_xg = 0.0
     processed_possessions = set()
     
