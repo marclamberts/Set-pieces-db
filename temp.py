@@ -895,7 +895,6 @@ elif st.session_state.current_section == "routines":
             continue
         
         processed_possessions.add(possession_id)
-        
         subsequent_events = df_corner.iloc[corner_index + 1:]
         same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
         shots = same_possession[same_possession['event_type'] == 'Shot']
