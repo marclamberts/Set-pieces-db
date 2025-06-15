@@ -838,6 +838,26 @@ elif st.session_state.current_section == "routines":
         ["All"] + sorted(corner_summary["classification"].dropna().unique().tolist()),
         key="classification_filter"
     )
+    
+    # Additional filters for Team, Nation, League
+    team_filter = st.sidebar.selectbox(
+        "Filter by Team",
+        ["All"] + sorted(corner_summary["team.name"].dropna().unique().tolist()),
+        key="team_filter"
+    )
+    
+    nation_filter = st.sidebar.selectbox(
+        "Filter by Nation",
+        ["All"] + sorted(corner_summary["player.nation"].dropna().unique().tolist()),
+        key="nation_filter"
+    )
+    
+    league_filter = st.sidebar.selectbox(
+        "Filter by League",
+        ["All"] + sorted(corner_summary["competition.competition_name"].dropna().unique().tolist()),
+        key="league_filter"
+    )
+
 
     # Apply filters
     filtered_corners = corner_summary.copy()
@@ -856,6 +876,14 @@ elif st.session_state.current_section == "routines":
         filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == pass_outcome_filter]
     if classification_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["classification"] == classification_filter]
+        # New filters for Team, Nation, League
+    if team_filter != "All":
+        filtered_corners = filtered_corners[filtered_corners["team.name"] == team_filter]
+    if nation_filter != "All":
+        filtered_corners = filtered_corners[filtered_corners["player.nation"] == nation_filter]
+    if league_filter != "All":
+        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == league_filter]
+    
 
     if filtered_corners.empty:
         st.info("No corners found for the selected filters.")
