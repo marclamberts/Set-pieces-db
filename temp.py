@@ -809,8 +809,6 @@ elif st.session_state.current_section == "routines":
             'Match': row.get('Match', 'Unknown'),
             'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
             'season.season_name': row.get('season.season_name', 'Unknown'),
-            'League': row.get('League', 'Unknown'),
-            'Nation': row.get('Nation', 'Unknown'),
             'xG': xg_sum
         })
 
@@ -856,7 +854,7 @@ elif st.session_state.current_section == "routines":
     
     league_filter = st.sidebar.selectbox(
         "Filter by League",
-        ["All"] + sorted(corner_summary["League"].dropna().unique().tolist()),
+        ["All"] + sorted(corner_summary["competition.competition_name"].dropna().unique().tolist()),
         key="league_filter"
     )
 
@@ -882,7 +880,7 @@ elif st.session_state.current_section == "routines":
     if team_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["team.name"] == team_filter]
     if nation_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["Nation"] == nation_filter]
+        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == nation_filter]
     if league_filter != "All":
         filtered_corners = filtered_corners[filtered_corners["League"] == league_filter]
     
