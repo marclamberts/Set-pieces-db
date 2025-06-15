@@ -881,41 +881,45 @@ elif st.session_state.current_section == "routines":
         st.info("No corners found for the selected filters.")
         st.stop()
 
-        # Calculate total shots and xG stats per unique corner possession
-    total_shots = 0
+            # Calculate total shots and xG stats per unique corner possession
+        total_shots = 0
     total_xg = 0.0
     processed_possessions = set()
     
     for _, row in filtered_corners.iterrows():
         corner_index = row['corner_index']
         possession_id = df_corner.loc[corner_index, 'possession']
-        
-        # Skip if possession_id already counted
+    
         if possession_id in processed_possessions:
             continue
-        
         processed_possessions.add(possession_id)
+    
         subsequent_events = df_corner.iloc[corner_index + 1:]
         same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
+    
         shots = same_possession[same_possession['event_type'] == 'Shot']
-        
         total_shots += len(shots)
-        
+    
         if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
             total_xg += valid_xg_values.sum()
+    
+    # Metrics displayed only once here — after summing all shots and xG
+    st.title("Corner Kick Analysis")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Corners", len(filtered_corners))
+    col2.metric("Total Shots from Corners", total_shots)
+    col3.metric("Total xG Generated", f"{total_xg:.2f}")
+    
+    if total_shots > 0:
+        st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
+    else:
+        st.metric("Avg xG per Shot", "N/A")
+    
+    # Show filtered corners table only (not all corners)
+    st.markdown("### Filtered Corners Detail")
+    st.dataframe(filtered_corners.reset_index(drop=True))
 
-        # Display metrics
-        st.title("Corner Kick Analysis")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Corners", len(filtered_corners))
-        col2.metric("Total Shots from Corners", total_shots)
-        col3.metric("Total xG Generated", f"{total_xg:.2f}")
-        
-        if total_shots > 0:
-            st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
-        else:
-            st.metric("Avg xG per Shot", "N/A")
 
 
 
