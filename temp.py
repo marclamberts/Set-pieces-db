@@ -905,17 +905,17 @@ elif st.session_state.current_section == "routines":
             valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
             total_xg += valid_xg_values.sum()
 
-# Display metrics
-st.title("Corner Kick Analysis")
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Corners", len(filtered_corners))
-col2.metric("Total Shots from Corners", total_shots)
-col3.metric("Total xG Generated", f"{total_xg:.2f}")
-
-if total_shots > 0:
-    st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
-else:
-    st.metric("Avg xG per Shot", "N/A")
+        # Display metrics
+        st.title("Corner Kick Analysis")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Corners", len(filtered_corners))
+        col2.metric("Total Shots from Corners", total_shots)
+        col3.metric("Total xG Generated", f"{total_xg:.2f}")
+        
+        if total_shots > 0:
+            st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
+        else:
+            st.metric("Avg xG per Shot", "N/A")
 
 
 
