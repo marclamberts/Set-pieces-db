@@ -286,6 +286,10 @@ if st.session_state.current_section == "shots":
     
     # Filter for goals from inside the final third
     df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
+    if st.button("🔙 Back to Main Menu"):
+        st.session_state.current_section = None
+        st.rerun()
+
     
     # -------------------- Sidebar Filters --------------------
     with st.sidebar:
@@ -351,7 +355,8 @@ if st.session_state.current_section == "shots":
             0.01,
             key="xg_slider"
         )
-    
+       
+
     # -------------------- Apply Filters --------------------
     filtered = df_goals.copy()
     for key, col in [
@@ -659,6 +664,9 @@ elif st.session_state.current_section == "routines":
 
     # Sidebar Filters
     st.sidebar.markdown("### Corner Filter Options")
+    if st.button("🔙 Back to Main Menu"):
+        st.session_state.current_section = None
+        st.rerun()
 
     corner_team_filter = st.sidebar.selectbox(
         "Team (Corners)",
