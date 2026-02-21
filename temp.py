@@ -2,22 +2,13 @@
 import streamlit as st
 import pandas as pd
 import os
-import ast
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
-from mplsoccer import Pitch, VerticalPitch
-import matplotlib.pyplot as plt
 
-st.set_page_config(
-    page_title="Set Piece Dashboard",
-    layout="wide",
-    page_icon="⚽"
-)
+st.set_page_config(page_title="Set Piece Dashboard", layout="wide", page_icon="⚽")
 
-PASSWORD = "PrincessWay2526"
-
-# -------------------- Style --------------------
+# -------------------- Style (clean + professional) --------------------
 fivethirtyeight_style = """
 <style>
     :root {
@@ -28,338 +19,339 @@ fivethirtyeight_style = """
         --fte-dark: #202020;
         --fte-light: #f8f8f8;
         --fte-gray: #757575;
+        --border: #e6e6e6;
     }
-    
+
     .main { 
         background-color: white; 
         font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
-    
-    .sidebar .sidebar-content { 
-        background-color: white; 
-        border-right: 1px solid #e0e0e0;
+
+    /* Make sidebar feel like a nav */
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid var(--border);
     }
-    
+
     h1, h2, h3, h4, h5, h6 { 
         color: var(--fte-dark);
         font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
-        font-weight: 700;
-        letter-spacing: -0.5px;
+        font-weight: 800;
+        letter-spacing: -0.3px;
     }
-    
-    h1 {
-        border-bottom: 3px solid var(--fte-blue);
-        padding-bottom: 8px;
-        font-size: 2.2rem;
-    }
-    
+
+    /* Buttons */
     .stButton>button { 
         background-color: var(--fte-blue); 
         color: white; 
-        border-radius: 4px;
-        font-weight: 600;
-        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
+        border-radius: 8px;
+        font-weight: 700;
+        border: 0px;
+        padding: 0.55rem 0.9rem;
     }
-    
     .stButton>button:hover { 
         background-color: #0d5bba; 
         transform: none; 
         box-shadow: none;
     }
-    
+
+    /* Metrics */
+    [data-testid="metric-container"] { 
+        background-color: white; 
+        border-radius: 12px; 
+        padding: 16px; 
+        border: 1px solid var(--border);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    /* Dataframe */
+    .stDataFrame { font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif; }
+
+    /* Tabs */
     .stTabs [data-baseweb="tab-list"] { 
         gap: 0px;
-        border-bottom: 2px solid #e0e0e0;
+        border-bottom: 2px solid var(--border);
     }
-    
     .stTabs [data-baseweb="tab"] { 
-        padding: 10px 20px; 
+        padding: 10px 18px; 
         background-color: transparent;
         border: none;
-        font-weight: 600;
+        font-weight: 700;
         color: var(--fte-gray);
         font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
-    
     .stTabs [aria-selected="true"] { 
         background-color: transparent;
         color: var(--fte-blue);
         border-bottom: 3px solid var(--fte-blue);
     }
-    
-    [data-testid="metric-container"] { 
-        background-color: white; 
-        border-radius: 0px; 
-        padding: 15px; 
-        border-left: 4px solid var(--fte-blue);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    
+
+    /* Leaderboard */
     .leaderboard-table { 
         width: 100%; 
         border-collapse: collapse;
         font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
     }
-    
     .leaderboard-table th { 
         background-color: var(--fte-dark); 
         color: white; 
         padding: 12px; 
         text-align: left;
-        font-weight: 700;
+        font-weight: 800;
+        font-size: 0.95rem;
     }
-    
     .leaderboard-table td { 
-        padding: 10px; 
-        border-bottom: 1px solid #e0e0e0;
+        padding: 10px 12px; 
+        border-bottom: 1px solid var(--border);
+        font-size: 0.92rem;
     }
-    
-    .leaderboard-table tr:nth-child(even) { 
-        background-color: #f8f8f8; 
-    }
-    
-    .leaderboard-table tr:hover { 
-        background-color: #f0f0f0; 
-    }
-    
-    .plot-container {
-        background-color: white;
-        padding: 15px;
-    }
-    
-    .stDataFrame {
-        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
-    }
-    
-    .stMarkdown {
-        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
-    }
-    
-    .footer {
-        font-size: 0.8em;
-        color: var(--fte-gray);
-        border-top: 2px solid #e0e0e0;
-        padding-top: 15px;
-        margin-top: 30px;
-        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
-    }
-    
-    /* FiveThirtyEight-style annotations */
+    .leaderboard-table tr:nth-child(even) { background-color: #fbfbfb; }
+
     .annotation {
-        font-size: 0.85em;
+        font-size: 0.86em;
         color: var(--fte-gray);
         font-style: italic;
-        margin-top: 5px;
+        margin-top: 6px;
     }
-    
-    /* Section selection buttons */
-    .section-button {
-        display: flex;
-        justify-content: center;
-        gap: 20px;
-        margin-bottom: 30px;
-    }
-    
-    .section-button button {
-        flex: 1;
-        max-width: 300px;
-        padding: 20px;
-        font-size: 1.2rem;
-        background-color: var(--fte-blue);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .section-button button:hover {
-        background-color: #0d5bba;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    
-    .section-button button.active {
-        background-color: var(--fte-dark);
-        transform: none;
-        box-shadow: none;
+
+    .footer {
+        font-size: 0.85em;
+        color: var(--fte-gray);
+        border-top: 1px solid var(--border);
+        padding-top: 14px;
+        margin-top: 26px;
+        font-family: 'Decima Mono', 'Helvetica Neue', Arial, sans-serif;
     }
 </style>
 """
 st.markdown(fivethirtyeight_style, unsafe_allow_html=True)
 
-# -------------------- Authentication --------------------
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+# -------------------- Helpers (fast parsing + caching) --------------------
+BASE_PATH = os.path.dirname(__file__)
 
-if not st.session_state.authenticated:
-    st.title("🔒 Set Piece Dashboard")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("### Please authenticate to continue")
-        password = st.text_input("Enter password:", type="password", key="password_input")
-        if st.button("Login", key="login_button"):
-            if password == PASSWORD:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Incorrect password")
-        st.markdown('<div class="footer">© 2023 Football Analytics Team</div>', unsafe_allow_html=True)
-    st.stop()
+FILTER_COLS = [
+    "competition.country_name",
+    "competition.competition_name",
+    "season.season_name",
+]
 
-# -------------------- Section Selection --------------------
-if "current_section" not in st.session_state:
-    st.session_state.current_section = None
-
-# Display section selection if no section is selected
-if st.session_state.current_section is None:
-    st.title("⚽ Set Piece Analysis Dashboard")
-    st.markdown("### Select an analysis section:")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("Shots Analysis", key="shots_button", use_container_width=True):
-            st.session_state.current_section = "shots"
-            st.rerun()
-    
-    with col2:
-        if st.button("Corner Routines", key="routines_button", use_container_width=True):
-            st.session_state.current_section = "routines"
-            st.rerun()
-    
-    with col3:
-        if st.button("Penalty Analysis", key="penalties_button", use_container_width=True):
-            st.session_state.current_section = "penalties"
-            st.rerun()
-    
-    st.markdown("""
-        <div style="margin-top: 50px; text-align: center;">
-            <p>Choose one of the sections above to begin your analysis:</p>
-            <ul style="display: inline-block; text-align: left;">
-                <li><strong>Shots Analysis</strong>: Explore set piece shots and goals</li>
-                <li><strong>Corner Routines</strong>: Analyze corner kick strategies</li>
-                <li><strong>Penalty Analysis</strong>: Dive into penalty kick statistics</li>
-            </ul>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="footer">© 2023 Football Analytics Team</div>', unsafe_allow_html=True)
-    st.stop()
-
-# -------------------- Load Data --------------------
 @st.cache_data(ttl=3600)
-def load_data():
-    base_path = os.path.dirname(__file__)
-    df = pd.read_excel(os.path.join(base_path, "db.xlsx"))
-    filter_columns = ["competition.country_name", "competition.competition_name", "season.season_name"]
-    for col in filter_columns:
+def load_shots_data() -> pd.DataFrame:
+    df = pd.read_excel(os.path.join(BASE_PATH, "db.xlsx"))
+
+    # clean filter columns once
+    for col in FILTER_COLS:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().replace('nan', '').replace('None', '')
+            df[col] = df[col].astype("string").fillna("").str.strip()
+
+    # fast vectorized parse for location: "[x, y, z]" -> columns
+    if "location" in df.columns:
+        loc = df["location"].astype("string").fillna("").str.strip()
+        parts = loc.str.strip("[]").str.split(",", expand=True)
+
+        df["location_x"] = pd.to_numeric(parts[0], errors="coerce") if parts.shape[1] > 0 else np.nan
+        df["location_y"] = pd.to_numeric(parts[1], errors="coerce") if parts.shape[1] > 1 else np.nan
+        df["location_z"] = pd.to_numeric(parts[2], errors="coerce") if parts.shape[1] > 2 else np.nan
+    else:
+        df["location_x"] = np.nan
+        df["location_y"] = np.nan
+        df["location_z"] = np.nan
+
+    # dedupe and basic validity filters once
+    subset_cols = [c for c in [
+        "location_x", "location_y", "shot.statsbomb_xg",
+        "team.name", "player.name", "Match", "shot.body_part.name"
+    ] if c in df.columns]
+    if subset_cols:
+        df = df.drop_duplicates(subset=subset_cols)
+
+    if "shot.statsbomb_xg" in df.columns:
+        df["shot.statsbomb_xg"] = pd.to_numeric(df["shot.statsbomb_xg"], errors="coerce")
+
+    df = df[df["location_x"].notna() & df["shot.statsbomb_xg"].notna()].copy()
     return df
 
 @st.cache_data(ttl=3600)
-def load_german_data():
-    base_path = os.path.dirname(__file__)
-    return pd.read_excel(os.path.join(base_path, "corner_passes_and_shots_with_metadata.xlsx"))
+def load_corner_data() -> pd.DataFrame:
+    df = pd.read_excel(os.path.join(BASE_PATH, "corner_passes_and_shots_with_metadata.xlsx"))
+    df.columns = df.columns.astype(str).str.strip()
+
+    # Clean some common string columns (optional)
+    for col in FILTER_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype("string").fillna("").str.strip()
+
+    # location_x/y from "location" (often list-like string)
+    if "location" in df.columns:
+        loc = df["location"].astype("string").fillna("").str.strip()
+        parts = loc.str.strip("[]()").str.split(",", expand=True)
+        df["location_x"] = pd.to_numeric(parts[0], errors="coerce") if parts.shape[1] > 0 else np.nan
+        df["location_y"] = pd.to_numeric(parts[1], errors="coerce") if parts.shape[1] > 1 else np.nan
+    else:
+        df["location_x"] = np.nan
+        df["location_y"] = np.nan
+
+    # pass_end_x/y from "pass.end_location" typically "x, y"
+    if "pass.end_location" in df.columns:
+        pel = df["pass.end_location"].astype("string").fillna("").str.split(",", expand=True)
+        df["pass_end_x"] = pd.to_numeric(pel[0], errors="coerce") if pel.shape[1] > 0 else np.nan
+        df["pass_end_y"] = pd.to_numeric(pel[1], errors="coerce") if pel.shape[1] > 1 else np.nan
+    else:
+        df["pass_end_x"] = np.nan
+        df["pass_end_y"] = np.nan
+
+    # Ensure xG numeric if present
+    if "shot.statsbomb_xg" in df.columns:
+        df["shot.statsbomb_xg"] = pd.to_numeric(df["shot.statsbomb_xg"], errors="coerce").fillna(0)
+
+    return df
+
+@st.cache_data(ttl=3600)
+def build_corner_summary(df_corner: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fast corner classification using possession group ops (avoids iterrows loop).
+    Requires: event_type, possession, and stable ordering (index/event_id).
+    """
+    df = df_corner.copy()
+
+    # determine sort column
+    sort_col = "index" if "index" in df.columns else ("event_id" if "event_id" in df.columns else None)
+    if sort_col:
+        df = df.sort_values(["possession", sort_col]).reset_index(drop=True)
+    else:
+        df = df.sort_values(["possession"]).reset_index(drop=True)
+
+    if "event_type" not in df.columns or "possession" not in df.columns:
+        return pd.DataFrame()
+
+    df["is_shot"] = df["event_type"].eq("Shot")
+    df["xg"] = df.get("shot.statsbomb_xg", 0)
+    pos_xg = df.groupby("possession")["xg"].sum()
+
+    # next event inside possession
+    df["next_event_type"] = df.groupby("possession")["event_type"].shift(-1)
+
+    # shot within next 3 events (excluding current row)
+    df["shot_within_3"] = (
+        df.groupby("possession")["is_shot"]
+          .transform(lambda s: s.shift(-1).rolling(3, min_periods=1).max())
+          .fillna(False)
+          .astype(bool)
+    )
+
+    corner_passes = df[df["event_type"].eq("CornerPass")].copy()
+    if corner_passes.empty:
+        return pd.DataFrame()
+
+    # side detection from corner location_y
+    # Your data uses y=0.1 for left and y=80 for right
+    y = corner_passes["location_y"]
+    corner_passes["side"] = np.select(
+        [y.eq(0.1), y.eq(80)],
+        ["Left", "Right"],
+        default="Unknown"
+    )
+
+    corner_passes["classification"] = np.select(
+        [
+            corner_passes["next_event_type"].eq("Shot"),
+            corner_passes["shot_within_3"].eq(True),
+            corner_passes["possession"].map(pos_xg).gt(0),
+        ],
+        [
+            "First contact - direct shot",
+            "First contact - shot within 3 seconds",
+            "No first contact - shot",
+        ],
+        default="First contact - no shot"
+    )
+
+    corner_passes["xG"] = corner_passes["possession"].map(pos_xg).fillna(0)
+
+    # Build summary columns expected by your UI
+    out = pd.DataFrame({
+        "corner_index": corner_passes.index,  # row index after sorting
+        "classification": corner_passes["classification"],
+        "side": corner_passes["side"],
+        "pass_height": corner_passes.get("pass.height.name", "Unknown"),
+        "pass_body_part": corner_passes.get("pass.body_part.name", "Unknown"),
+        "pass_outcome": corner_passes.get("pass.outcome.name", "Unknown"),
+        "pass_technique": corner_passes.get("pass.technique.name", "Unknown"),
+        "pass_end_x": corner_passes.get("pass_end_x", np.nan),
+        "pass_end_y": corner_passes.get("pass_end_y", np.nan),
+        "team.name": corner_passes.get("team.name", "Unknown"),
+        "player.name": corner_passes.get("player.name", "Unknown"),
+        "Match": corner_passes.get("Match", "Unknown"),
+        "competition.competition_name": corner_passes.get("competition.competition_name", "Unknown"),
+        "season.season_name": corner_passes.get("season.season_name", "Unknown"),
+        "possession": corner_passes.get("possession", np.nan),
+        "xG": corner_passes["xG"],
+    })
+    return out
+
+def safe_unique(series: pd.Series):
+    return sorted([x for x in series.dropna().astype(str).unique().tolist() if str(x).strip() != "" and str(x) != "nan"])
+
+# -------------------- Sidebar Navigation --------------------
+with st.sidebar:
+    st.markdown("## ⚽ Set Piece Dashboard")
+    st.caption("Fast, clean, and filterable set piece insights.")
+    section = st.radio("Navigation", ["Shots Analysis", "Corner Routines", "Penalty Analysis"], index=0)
+
+    st.markdown("---")
+    with st.expander("App Controls", expanded=False):
+        if st.button("Reset all inputs"):
+            for k in list(st.session_state.keys()):
+                if k not in ("section_nav",):
+                    del st.session_state[k]
+            st.rerun()
 
 # -------------------- SHOTS ANALYSIS SECTION --------------------
-if st.session_state.current_section == "shots":
-    df = load_data()
-    
-    # Safely parse location column
-    df['location'] = df['location'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else [None, None, None])
-    
-    # Expand location into separate columns
-    loc_df = df['location'].apply(pd.Series)
-    loc_df.columns = ['location_x', 'location_y', 'location_z']
-    df = pd.concat([df, loc_df], axis=1)
-    
-    # Drop duplicates based on relevant columns
-    df = df.drop_duplicates(subset=[
-        'location_x', 'location_y', 'shot.statsbomb_xg',
-        'team.name', 'player.name', 'Match', 'shot.body_part.name'
-    ])
-    
-    # Filter valid shots
-    df = df[df['location_x'].notna() & df['shot.statsbomb_xg'].notna()]
-    
-    # Filter for goals from inside the final third
-    df_goals = df[(df['shot.outcome.name'] == 'Goal') & (df['location_x'] >= 60)].copy()
-    if st.button("🔙 Back to Main Menu"):
-        st.session_state.current_section = None
-        st.rerun()
+def render_shots():
+    df = load_shots_data()
 
-    
-    # -------------------- Sidebar Filters --------------------
+    # Pre-filter goals in final third once
+    df_goals = df[(df.get("shot.outcome.name") == "Goal") & (df["location_x"] >= 60)].copy()
+    if df_goals.empty:
+        st.warning("No goals found in the dataset with location_x >= 60.")
+        return
+
+    # Sidebar Filters (in a form to avoid constant reruns)
     with st.sidebar:
-        st.markdown("### Filter Options")
-        filters = {}
-        filters["Set Piece Type"] = st.selectbox(
-            "Set Piece", 
-            ["All"] + sorted(df["play_pattern.name"].dropna().unique().tolist()),
-            key="set_piece_filter"
-        )
-        filters["Team"] = st.selectbox(
-            "Team", 
-            ["All"] + sorted(df["team.name"].dropna().unique().tolist()),
-            key="team_filter"
-        )
-        filters["Position"] = st.selectbox(
-            "Position", 
-            ["All"] + sorted(df["position.name"].dropna().unique().tolist()),
-            key="position_filter"
-        )
-        
-        country_options = ["All"] + sorted([x for x in df["competition.country_name"].unique().tolist() if x and str(x) != 'nan'])
-        filters["Nation"] = st.selectbox(
-            "Nation", 
-            country_options,
-            key="nation_filter"
-        )
-        
-        competition_options = ["All"] + sorted([x for x in df["competition.competition_name"].unique().tolist() if x and str(x) != 'nan'])
-        filters["League"] = st.selectbox(
-            "League", 
-            competition_options,
-            key="league_filter"
-        )
-        
-        season_options = ["All"] + sorted([x for x in df["season.season_name"].unique().tolist() if x and str(x) != 'nan'])
-        filters["Season"] = st.selectbox(
-            "Season", 
-            season_options,
-            key="season_filter"
-        )
-        
-        filters["Match"] = st.selectbox(
-            "Match", 
-            ["All"] + sorted(df["Match"].dropna().unique().tolist()),
-            key="match_filter"
-        )
-        filters["Body Part"] = st.selectbox(
-            "Body Part", 
-            ["All"] + sorted(df["shot.body_part.name"].dropna().unique().tolist()),
-            key="body_part_filter"
-        )
-        filters["First-Time"] = st.selectbox(
-            "First-Time Shot", 
-            ["All", "Yes", "No"],
-            key="first_time_filter"
-        )
-        xg_range = st.slider(
-            "xG Range", 
-            float(df["shot.statsbomb_xg"].min()), 
-            float(df["shot.statsbomb_xg"].max()), 
-            (0.0, 1.0), 
-            0.01,
-            key="xg_slider"
-        )
-       
+        with st.form("shots_filters"):
+            st.markdown("### Filters")
+            set_piece_vals = ["All"] + safe_unique(df_goals.get("play_pattern.name", pd.Series(dtype=str)))
+            team_vals = ["All"] + safe_unique(df_goals.get("team.name", pd.Series(dtype=str)))
+            pos_vals = ["All"] + safe_unique(df_goals.get("position.name", pd.Series(dtype=str)))
+            nation_vals = ["All"] + safe_unique(df_goals.get("competition.country_name", pd.Series(dtype=str)))
+            league_vals = ["All"] + safe_unique(df_goals.get("competition.competition_name", pd.Series(dtype=str)))
+            season_vals = ["All"] + safe_unique(df_goals.get("season.season_name", pd.Series(dtype=str)))
+            match_vals = ["All"] + safe_unique(df_goals.get("Match", pd.Series(dtype=str)))
+            body_vals = ["All"] + safe_unique(df_goals.get("shot.body_part.name", pd.Series(dtype=str)))
 
-    # -------------------- Apply Filters --------------------
+            filters = {}
+            filters["Set Piece Type"] = st.selectbox("Set Piece", set_piece_vals, key="shots_set_piece_filter")
+            filters["Team"] = st.selectbox("Team", team_vals, key="shots_team_filter")
+            filters["Position"] = st.selectbox("Position", pos_vals, key="shots_position_filter")
+            filters["Nation"] = st.selectbox("Nation", nation_vals, key="shots_nation_filter")
+            filters["League"] = st.selectbox("League", league_vals, key="shots_league_filter")
+            filters["Season"] = st.selectbox("Season", season_vals, key="shots_season_filter")
+            filters["Match"] = st.selectbox("Match", match_vals, key="shots_match_filter")
+            filters["Body Part"] = st.selectbox("Body Part", body_vals, key="shots_body_part_filter")
+
+            first_time = st.selectbox("First-Time Shot", ["All", "Yes", "No"], key="shots_first_time_filter")
+
+            xg_min = float(np.nanmin(df_goals["shot.statsbomb_xg"].values))
+            xg_max = float(np.nanmax(df_goals["shot.statsbomb_xg"].values))
+            xg_range = st.slider("xG Range", xg_min, xg_max, (max(xg_min, 0.0), min(xg_max, 1.0)), 0.01, key="shots_xg_slider")
+
+            apply_btn = st.form_submit_button("Apply")
+
+    # Apply filters (cheap)
     filtered = df_goals.copy()
-    for key, col in [
+    mapping = [
         ("Set Piece Type", "play_pattern.name"),
         ("Team", "team.name"),
         ("Match", "Match"),
@@ -367,652 +359,454 @@ if st.session_state.current_section == "shots":
         ("Body Part", "shot.body_part.name"),
         ("Nation", "competition.country_name"),
         ("League", "competition.competition_name"),
-        ("Season", "season.season_name")
-    ]:
-        if filters[key] != "All":
+        ("Season", "season.season_name"),
+    ]
+    for key, col in mapping:
+        if key in filters and filters[key] != "All" and col in filtered.columns:
             filtered = filtered[filtered[col] == filters[key]]
-    if filters["First-Time"] != "All":
-        filtered = filtered[filtered["shot.first_time"] == (filters["First-Time"] == "Yes")]
+
+    if first_time != "All" and "shot.first_time" in filtered.columns:
+        filtered = filtered[filtered["shot.first_time"] == (first_time == "Yes")]
+
     filtered = filtered[filtered["shot.statsbomb_xg"].between(*xg_range)]
-    
+
+    # UI
+    st.title("Set Piece Goals Analysis")
+    st.caption(
+        f"Showing **{len(filtered)}** goals | xG range **{xg_range[0]:.2f}–{xg_range[1]:.2f}**"
+        + (f" | Team: **{filters['Team']}**" if filters.get("Team") and filters["Team"] != "All" else "")
+    )
+
     if filtered.empty:
         st.warning("No goals found matching these filters.")
-        st.stop()
-    
-    # -------------------- Metrics --------------------
-    st.title("Set Piece Goals Analysis")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Goals", len(filtered))
-    col2.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
-    col3.metric("Top Team", filtered['team.name'].mode()[0])
-    col4.metric("Most Common Type", filtered['play_pattern.name'].mode()[0])
-    
-    # -------------------- Tabs --------------------
-    tab0, tab1, tab4, tab_leaderboard = st.tabs([
-        "General Dashboard", "Goal Map", "Goal Placement", "Leaderboard"
-    ])
-    
+        return
+
+    # KPIs
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Goals", int(len(filtered)))
+    c2.metric("Avg. xG", f"{filtered['shot.statsbomb_xg'].mean():.3f}")
+    c3.metric("Top Team", filtered["team.name"].mode().iat[0] if "team.name" in filtered.columns else "—")
+    c4.metric("Most Common Type", filtered["play_pattern.name"].mode().iat[0] if "play_pattern.name" in filtered.columns else "—")
+
+    tab0, tab1, tab4, tab_lb = st.tabs(["General Dashboard", "Goal Map", "Goal Placement", "Leaderboard"])
+
+    # -------- General Dashboard --------
     with tab0:
-        st.markdown("### General Overview")
-        col1, col2 = st.columns(2)
-        with col1:
+        colA, colB = st.columns(2)
+
+        with colA:
             team_counts = filtered["team.name"].value_counts().reset_index()
             team_counts.columns = ["Team", "Goals"]
-            fig_team = px.bar(team_counts, x="Team", y="Goals", 
-                             color_discrete_sequence=["#1a73e8"],
-                             template="plotly_white")
-            fig_team.update_layout(
-                plot_bgcolor='white', 
-                paper_bgcolor='white',
-                title="Goals by Team",
-                title_font=dict(size=18),
-                margin=dict(t=40, b=40),
-                showlegend=False
-            )
+            fig_team = px.bar(team_counts, x="Team", y="Goals", template="plotly_white")
+            fig_team.update_layout(title="Goals by Team", height=420, margin=dict(t=50, b=20))
             fig_team.update_traces(marker_line_width=0)
             st.plotly_chart(fig_team, use_container_width=True)
             st.markdown('<div class="annotation">Number of set piece goals by team</div>', unsafe_allow_html=True)
-        with col2:
+
+        with colB:
             type_counts = filtered["play_pattern.name"].value_counts().reset_index()
             type_counts.columns = ["Set Piece Type", "Goals"]
-            fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals",
-                             color_discrete_sequence=["#ed3b3b"],
-                             template="plotly_white")
-            fig_type.update_layout(
-                plot_bgcolor='white', 
-                paper_bgcolor='white',
-                title="Goals by Set Piece Type",
-                title_font=dict(size=18),
-                margin=dict(t=40, b=40),
-                showlegend=False
-            )
+            fig_type = px.bar(type_counts, x="Set Piece Type", y="Goals", template="plotly_white")
+            fig_type.update_layout(title="Goals by Set Piece Type", height=420, margin=dict(t=50, b=20))
             fig_type.update_traces(marker_line_width=0)
             st.plotly_chart(fig_type, use_container_width=True)
-            st.markdown('<div class="annotation">Distribution across different set piece types</div>', unsafe_allow_html=True)
-    
+            st.markdown('<div class="annotation">Distribution across set piece types</div>', unsafe_allow_html=True)
+
+        with st.expander("Show filtered rows"):
+            show_cols = [c for c in [
+                "player.name", "team.name", "play_pattern.name", "shot.statsbomb_xg", "shot.body_part.name",
+                "Match", "competition.competition_name", "season.season_name"
+            ] if c in filtered.columns]
+            st.dataframe(filtered[show_cols], use_container_width=True)
+
+    # -------- Goal Map (attacking half) --------
     with tab1:
-        st.markdown("### Goal Locations")
-        fig = go.Figure()
-        pitch_length, pitch_width = 60, 80
-        fig.update_layout(
-            xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
-            yaxis=dict(range=[0, pitch_length], showgrid=False, zeroline=False, visible=False),
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            height=700,
-            margin=dict(t=40, b=40),
-            title="Goal Locations from Set Pieces",
-            title_font=dict(size=18),
-            shapes=[
-                dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
-                dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
-                dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
-                dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
-                dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
-                dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
-                dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
-                dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
-            ]
-        )
+        st.markdown("### Goal Locations (Attacking Half)")
+
         filtered_half = filtered[filtered["location_x"] >= 60].copy()
-        filtered_half["plot_x"] = filtered_half["location_y"]
-        filtered_half["plot_y"] = 120 - filtered_half["location_x"]
-        hover_text = (
-            "Player: " + filtered_half["player.name"] +
-            "<br>Team: " + filtered_half["team.name"] +
-            "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
-            "<br>Body Part: " + filtered_half["shot.body_part.name"] +
-            "<br>Match: " + filtered_half["Match"]
-        )
-        fig.add_trace(go.Scatter(
-            x=filtered_half["plot_x"],
-            y=filtered_half["plot_y"],
-            mode='markers',
-            marker=dict(
-                size=filtered_half["shot.statsbomb_xg"] * 40 + 6, 
-                color=filtered_half["shot.statsbomb_xg"],
-                colorscale='Bluered',
-                colorbar=dict(title="xG"),
-                line=dict(width=0.5, color='black')
-            ),
-            text=hover_text,
-            hoverinfo='text'
-        ))
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown('<div class="annotation">Location of set piece goals (size and color by xG)</div>', unsafe_allow_html=True)
-    
-        selected_player = st.selectbox("Select Player", sorted(filtered_half["player.name"].unique()), key="player_selector")
-        st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][[
-            "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
-        ]])
-    
-    with tab4:
-        GOAL_WIDTH = 7.32
-        GOAL_HEIGHT = 2.44
-        LEFT_POST_Y = 36.8
-        RIGHT_POST_Y = 43.2
-    
-        st.markdown("### Goal Placement from shot.end_location")
-    
-        def split_end_location(s):
-            try:
-                x_str, y_str, z_str = s.split(',')
-                return float(x_str), float(y_str), float(z_str)
-            except Exception:
-                return None, None, None
-    
-        filtered[['shot.end_location_x', 'shot.end_location_y', 'shot.end_location_z']] = filtered['shot.end_location'].apply(
-            lambda s: pd.Series(split_end_location(s)))
-        
-        goals = filtered.dropna(subset=['shot.end_location_y']).copy()
-        goals = goals[(goals['shot.end_location_y'] >= LEFT_POST_Y) & (goals['shot.end_location_y'] <= RIGHT_POST_Y)]
-    
-        if goals.empty:
-            st.info("No goals with shot.end_location_y inside goalposts found.")
+        if filtered_half.empty:
+            st.info("No goals in the attacking half for these filters.")
         else:
-            goals['goal_x_m'] = (goals['shot.end_location_y'] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
-            goals['goal_z_m'] = goals['shot.end_location_z'].fillna(0)
-    
-            xg = goals['shot.statsbomb_xg'].fillna(0)
-            marker_size = np.interp(xg, (xg.min(), xg.max()), (6, 20))
-            marker_color = xg
-    
+            # Convert StatsBomb pitch coordinates to a 80x60 attacking-half view (your existing mapping)
+            filtered_half["plot_x"] = filtered_half["location_y"]
+            filtered_half["plot_y"] = 120 - filtered_half["location_x"]
+
+            hover_text = (
+                "Player: " + filtered_half.get("player.name", "").astype(str) +
+                "<br>Team: " + filtered_half.get("team.name", "").astype(str) +
+                "<br>xG: " + filtered_half["shot.statsbomb_xg"].round(2).astype(str) +
+                "<br>Body Part: " + filtered_half.get("shot.body_part.name", "").astype(str) +
+                "<br>Match: " + filtered_half.get("Match", "").astype(str)
+            )
+
             fig = go.Figure()
-    
-            fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT,
-                          line=dict(color="black", width=3))
-            fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2,
-                          line=dict(color="#757575", dash="dash"))
-            fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                          line=dict(color="#757575", dash="dash"))
-            fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT,
-                          line=dict(color="#757575", dash="dash"))
-    
-            fig.add_trace(go.Scatter(
-                x=goals['goal_x_m'],
-                y=goals['goal_z_m'],
-                mode='markers',
+
+            # Pitch (80 x 60)
+            fig.update_layout(
+                xaxis=dict(range=[0, 80], showgrid=False, zeroline=False, visible=False, scaleanchor="y"),
+                yaxis=dict(range=[0, 60], showgrid=False, zeroline=False, visible=False),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                height=700,
+                margin=dict(t=50, b=20),
+                title="Goal Locations from Set Pieces",
+                shapes=[
+                    dict(type="rect", x0=0, y0=0, x1=80, y1=60, line=dict(color="black", width=2)),
+                    dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="black", width=2)),
+                    dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="black", width=2)),
+                    dict(type="line", x0=30, y0=0, x1=50, y1=0, line=dict(color="black", width=4)),
+                    dict(type="circle", x0=38, y0=7, x1=40, y1=9, line=dict(color="black", width=2)),
+                    dict(type="path", path="M 18 0 A 20 22 0 0 1 62 0", line=dict(color="black", width=2)),
+                    dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="black", width=2)),
+                    dict(type="path", path="M 30 60 A 20 20 0 0 1 50 60", line=dict(color="black", width=2)),
+                ],
+            )
+
+            # WebGL scatter for speed
+            fig.add_trace(go.Scattergl(
+                x=filtered_half["plot_x"],
+                y=filtered_half["plot_y"],
+                mode="markers",
                 marker=dict(
-                    size=marker_size,
-                    color=marker_color,
-                    colorscale='Bluered',
-                    showscale=True,
+                    size=filtered_half["shot.statsbomb_xg"] * 40 + 6,
+                    color=filtered_half["shot.statsbomb_xg"],
+                    colorscale="Bluered",
                     colorbar=dict(title="xG"),
-                    line=dict(width=0.5, color='black'),
-                    opacity=0.8
+                    line=dict(width=0.5, color="black"),
+                    opacity=0.85
                 ),
-                text=goals['player.name'],
-                hovertemplate=(
-                    "Player: %{text}<br>"
-                    "Width: %{x:.2f} m<br>"
-                    "Height: %{y:.2f} m<br>"
-                    "xG: %{marker.color:.3f}<extra></extra>"
-                ),
+                text=hover_text,
+                hoverinfo="text",
                 name="Goals"
             ))
-    
-            fig.update_layout(
-                title="Goal Placement (Size & Color by xG)",
-                title_font=dict(size=18),
-                xaxis=dict(title="Goal Width (meters)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
-                yaxis=dict(title="Goal Height (meters)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
-                height=600,
-                width=700,
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                margin=dict(t=40, b=40),
-                yaxis_scaleanchor="x"
-            )
-    
+
             st.plotly_chart(fig, use_container_width=True)
-            st.markdown('<div class="annotation">Where set piece goals are being placed (divided into 6 zones)</div>', unsafe_allow_html=True)
-    
-            st.markdown("### Goals Data Sample")
-            st.dataframe(goals[[
-                "player.name", "team.name", "shot.end_location", "shot.end_location_x", "shot.end_location_y", "shot.end_location_z", "shot.statsbomb_xg"
-            ]])
-    
-    with tab_leaderboard:
-        st.markdown("### Performance Leaderboard")
-        
-        leaderboard_metric = st.selectbox(
-            "Rank players by:", 
-            ["Total Goals", "Total xG", "Average xG per Goal", "Goals per Match"],
-            key="leaderboard_metric"
-        )
-        
-        if not filtered.empty:
-            leaderboard_data = filtered.groupby(['player.name', 'team.name']).agg(
-                Total_Goals=('player.name', 'count'),
-                Total_xG=('shot.statsbomb_xg', 'sum'),
-                Matches=('Match', 'nunique')
-            ).reset_index()
-            
-            leaderboard_data['Avg_xG_per_Goal'] = leaderboard_data['Total_xG'] / leaderboard_data['Total_Goals']
-            leaderboard_data['Goals_per_Match'] = leaderboard_data['Total_Goals'] / leaderboard_data['Matches']
-            
-            if leaderboard_metric == "Total Goals":
-                leaderboard_data = leaderboard_data.sort_values('Total_Goals', ascending=False)
-                metric_col = 'Total_Goals'
-            elif leaderboard_metric == "Total xG":
-                leaderboard_data = leaderboard_data.sort_values('Total_xG', ascending=False)
-                metric_col = 'Total_xG'
-            elif leaderboard_metric == "Average xG per Goal":
-                leaderboard_data = leaderboard_data.sort_values('Avg_xG_per_Goal', ascending=False)
-                metric_col = 'Avg_xG_per_Goal'
+            st.markdown('<div class="annotation">Marker size & color represent xG</div>', unsafe_allow_html=True)
+
+            players = safe_unique(filtered_half["player.name"])
+            if players:
+                selected_player = st.selectbox("Select Player", players, key="shots_player_selector")
+                cols = [c for c in [
+                    "player.name", "team.name", "shot.statsbomb_xg", "shot.body_part.name", "Match", "competition.competition_name"
+                ] if c in filtered_half.columns]
+                st.dataframe(filtered_half[filtered_half["player.name"] == selected_player][cols], use_container_width=True)
+
+    # -------- Goal Placement (end_location) --------
+    with tab4:
+        st.markdown("### Goal Placement from shot.end_location")
+
+        if "shot.end_location" not in filtered.columns:
+            st.info("shot.end_location column not found.")
+        else:
+            # Expecting "x, y, z"
+            endloc = filtered["shot.end_location"].astype("string").fillna("").str.split(",", expand=True)
+            filtered["shot.end_location_x"] = pd.to_numeric(endloc[0], errors="coerce") if endloc.shape[1] > 0 else np.nan
+            filtered["shot.end_location_y"] = pd.to_numeric(endloc[1], errors="coerce") if endloc.shape[1] > 1 else np.nan
+            filtered["shot.end_location_z"] = pd.to_numeric(endloc[2], errors="coerce") if endloc.shape[1] > 2 else np.nan
+
+            GOAL_WIDTH = 7.32
+            GOAL_HEIGHT = 2.44
+            LEFT_POST_Y = 36.8
+            RIGHT_POST_Y = 43.2
+
+            goals = filtered.dropna(subset=["shot.end_location_y"]).copy()
+            goals = goals[(goals["shot.end_location_y"] >= LEFT_POST_Y) & (goals["shot.end_location_y"] <= RIGHT_POST_Y)]
+
+            if goals.empty:
+                st.info("No goals with shot.end_location_y inside goalposts found.")
             else:
-                leaderboard_data = leaderboard_data.sort_values('Goals_per_Match', ascending=False)
-                metric_col = 'Goals_per_Match'
-            
-            leaderboard_data[metric_col] = leaderboard_data[metric_col].round(3)
-            
-            st.markdown(f"#### Top 20 Players by {leaderboard_metric}")
-            
+                goals["goal_x_m"] = (goals["shot.end_location_y"] - LEFT_POST_Y) * (GOAL_WIDTH / (RIGHT_POST_Y - LEFT_POST_Y))
+                goals["goal_z_m"] = goals["shot.end_location_z"].fillna(0)
+
+                xg = goals["shot.statsbomb_xg"].fillna(0)
+                marker_size = np.interp(xg, (xg.min(), xg.max()), (6, 20)) if len(goals) > 1 else np.full(len(goals), 12)
+
+                fig = go.Figure()
+                fig.add_shape(type="rect", x0=0, y0=0, x1=GOAL_WIDTH, y1=GOAL_HEIGHT, line=dict(color="black", width=3))
+                fig.add_shape(type="line", x0=0, y0=GOAL_HEIGHT/2, x1=GOAL_WIDTH, y1=GOAL_HEIGHT/2, line=dict(color="#757575", dash="dash"))
+                fig.add_shape(type="line", x0=GOAL_WIDTH/3, y0=0, x1=GOAL_WIDTH/3, y1=GOAL_HEIGHT, line=dict(color="#757575", dash="dash"))
+                fig.add_shape(type="line", x0=2*GOAL_WIDTH/3, y0=0, x1=2*GOAL_WIDTH/3, y1=GOAL_HEIGHT, line=dict(color="#757575", dash="dash"))
+
+                fig.add_trace(go.Scattergl(
+                    x=goals["goal_x_m"],
+                    y=goals["goal_z_m"],
+                    mode="markers",
+                    marker=dict(
+                        size=marker_size,
+                        color=goals["shot.statsbomb_xg"],
+                        colorscale="Bluered",
+                        showscale=True,
+                        colorbar=dict(title="xG"),
+                        line=dict(width=0.5, color="black"),
+                        opacity=0.85
+                    ),
+                    text=goals.get("player.name", "").astype(str),
+                    hovertemplate="Player: %{text}<br>Width: %{x:.2f} m<br>Height: %{y:.2f} m<br>xG: %{marker.color:.3f}<extra></extra>",
+                    name="Goals"
+                ))
+
+                fig.update_layout(
+                    title="Goal Placement (Size & Color by xG)",
+                    xaxis=dict(title="Goal Width (m)", range=[0, GOAL_WIDTH], showgrid=False, zeroline=False),
+                    yaxis=dict(title="Goal Height (m)", range=[0, GOAL_HEIGHT], showgrid=False, zeroline=False),
+                    height=600,
+                    margin=dict(t=50, b=20),
+                    plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    yaxis_scaleanchor="x"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown('<div class="annotation">Goal mouth split into 6 zones</div>', unsafe_allow_html=True)
+
+                with st.expander("Show goal placement data"):
+                    cols = [c for c in [
+                        "player.name", "team.name", "shot.end_location",
+                        "shot.end_location_x", "shot.end_location_y", "shot.end_location_z",
+                        "shot.statsbomb_xg"
+                    ] if c in goals.columns]
+                    st.dataframe(goals[cols], use_container_width=True)
+
+    # -------- Leaderboard --------
+    with tab_lb:
+        st.markdown("### Performance Leaderboard")
+
+        metric = st.selectbox(
+            "Rank players by:",
+            ["Total Goals", "Total xG", "Average xG per Goal", "Goals per Match"],
+            key="shots_leaderboard_metric"
+        )
+
+        grp = filtered.groupby(["player.name", "team.name"], dropna=False).agg(
+            Total_Goals=("player.name", "count"),
+            Total_xG=("shot.statsbomb_xg", "sum"),
+            Matches=("Match", "nunique")
+        ).reset_index()
+
+        grp["Avg_xG_per_Goal"] = grp["Total_xG"] / grp["Total_Goals"]
+        grp["Goals_per_Match"] = grp["Total_Goals"] / grp["Matches"].replace(0, np.nan)
+
+        if metric == "Total Goals":
+            grp = grp.sort_values("Total_Goals", ascending=False)
+            metric_col = "Total_Goals"
+        elif metric == "Total xG":
+            grp = grp.sort_values("Total_xG", ascending=False)
+            metric_col = "Total_xG"
+        elif metric == "Average xG per Goal":
+            grp = grp.sort_values("Avg_xG_per_Goal", ascending=False)
+            metric_col = "Avg_xG_per_Goal"
+        else:
+            grp = grp.sort_values("Goals_per_Match", ascending=False)
+            metric_col = "Goals_per_Match"
+
+        grp[metric_col] = grp[metric_col].round(3)
+
+        st.markdown(f"#### Top 20 Players by {metric}")
+
+        st.write(
+            f"""
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>{metric}</th>
+                        <th>Total Goals</th>
+                        <th>Total xG</th>
+                        <th>Matches</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """,
+            unsafe_allow_html=True
+        )
+
+        top20 = grp.head(20).reset_index(drop=True)
+        for i, row in top20.iterrows():
             st.write(
                 f"""
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Player</th>
-                            <th>Team</th>
-                            <th>{leaderboard_metric}</th>
-                            <th>Total Goals</th>
-                            <th>Total xG</th>
-                            <th>Matches</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <tr>
+                    <td>{i+1}</td>
+                    <td>{row['player.name']}</td>
+                    <td>{row['team.name']}</td>
+                    <td><strong>{row[metric_col]}</strong></td>
+                    <td>{int(row['Total_Goals'])}</td>
+                    <td>{row['Total_xG']:.2f}</td>
+                    <td>{int(row['Matches'])}</td>
+                </tr>
                 """,
                 unsafe_allow_html=True
             )
-            
-            for i, row in leaderboard_data.head(20).iterrows():
-                st.write(
-                    f"""
-                    <tr>
-                        <td>{i+1}</td>
-                        <td>{row['player.name']}</td>
-                        <td>{row['team.name']}</td>
-                        <td><strong>{row[metric_col]}</strong></td>
-                        <td>{row['Total_Goals']}</td>
-                        <td>{row['Total_xG']:.2f}</td>
-                        <td>{row['Matches']}</td>
-                    </tr>
-                    """,
-                    unsafe_allow_html=True
-                )
-            
-            st.write("</tbody></table>", unsafe_allow_html=True)
-            st.markdown('<div class="annotation">Performance metrics for set piece specialists</div>', unsafe_allow_html=True)
-            
-            if st.checkbox("Show full leaderboard data"):
-                st.dataframe(leaderboard_data)
+
+        st.write("</tbody></table>", unsafe_allow_html=True)
+        st.markdown('<div class="annotation">Set piece specialists ranked by selected metric</div>', unsafe_allow_html=True)
+
+        with st.expander("Show full leaderboard data"):
+            st.dataframe(grp, use_container_width=True)
+
+    st.markdown('<div class="footer">© Football Analytics Team</div>', unsafe_allow_html=True)
 
 # -------------------- CORNER ROUTINES SECTION --------------------
-elif st.session_state.current_section == "routines":
-    import ast
-    import pandas as pd
-    import streamlit as st
-    from plotly import express as px
-
-    df_german = load_german_data()
-
-    if df_german.empty:
+def render_corners():
+    df_corner = load_corner_data()
+    if df_corner.empty:
         st.error("No data loaded for corner routines analysis.")
-        st.stop()
+        return
+    if "event_type" not in df_corner.columns or "possession" not in df_corner.columns:
+        st.error("Corner file must include 'event_type' and 'possession' columns.")
+        return
 
-    # Sidebar Filters
-    st.sidebar.markdown("### Corner Filter Options")
-    if st.button("🔙 Back to Main Menu"):
-        st.session_state.current_section = None
-        st.rerun()
+    corner_summary = build_corner_summary(df_corner)
+    if corner_summary.empty:
+        st.info("No corner passes found in the data (event_type == 'CornerPass').")
+        return
 
-    corner_team_filter = st.sidebar.selectbox(
-        "Team (Corners)",
-        ["All"] + sorted(df_german["team.name"].dropna().unique().tolist()),
-        key="corner_team_filter"
-    )
+    st.title("Corner Kick Analysis")
+    st.caption("Corner outcomes + end locations, optimized for speed.")
 
-    corner_technique_filter = st.sidebar.selectbox(
-        "Corner Technique",
-        ["All"] + sorted(df_german["pass.technique.name"].dropna().unique().tolist()),
-        key="corner_technique_filter"
-    )
+    # Sidebar Filters in a form
+    with st.sidebar:
+        with st.form("corner_filters"):
+            st.markdown("### Corner Filters")
 
-    corner_side_filter = st.sidebar.selectbox(
-        "Corner Side",
-        ["All", "Left", "Right"],
-        key="corner_side_filter"
-    )
+            team_vals = ["All"] + safe_unique(corner_summary["team.name"])
+            technique_vals = ["All"] + safe_unique(corner_summary["pass_technique"])
+            side_vals = ["All", "Left", "Right", "Unknown"]
+            height_vals = ["All"] + safe_unique(corner_summary["pass_height"])
+            body_vals = ["All"] + safe_unique(corner_summary["pass_body_part"])
+            outcome_vals = ["All"] + safe_unique(corner_summary["pass_outcome"])
+            class_vals = ["All"] + safe_unique(corner_summary["classification"])
+            league_vals = ["All"] + safe_unique(corner_summary["competition.competition_name"])
 
-    # Prepare corner data
-    df_corner = df_german.copy()
+            f_team = st.selectbox("Team", team_vals, key="corner_team_filter")
+            f_tech = st.selectbox("Corner Technique", technique_vals, key="corner_technique_filter")
+            f_side = st.selectbox("Corner Side", side_vals, key="corner_side_filter")
+            f_height = st.selectbox("Pass Height", height_vals, key="pass_height_filter")
+            f_body = st.selectbox("Pass Body Part", body_vals, key="pass_body_part_filter")
+            f_outcome = st.selectbox("Pass Outcome", outcome_vals, key="pass_outcome_filter")
+            f_class = st.selectbox("Outcome Classification", class_vals, key="classification_filter")
+            f_league = st.selectbox("League", league_vals, key="corner_league_filter")
 
-    def parse_location(loc):
-        if pd.isna(loc):
-            return [None, None]
-        if isinstance(loc, str):
-            try:
-                loc_list = ast.literal_eval(loc)
-                if isinstance(loc_list, (list, tuple)) and len(loc_list) >= 2:
-                    return loc_list[:2]
-            except:
-                return [None, None]
-        elif isinstance(loc, (list, tuple)) and len(loc) >= 2:
-            return loc[:2]
-        return [None, None]
+            apply_btn = st.form_submit_button("Apply")
 
-    if 'location' in df_corner.columns:
-        df_corner[['location_x', 'location_y']] = df_corner['location'].apply(parse_location).apply(pd.Series)
-    else:
-        df_corner['location_x'] = None
-        df_corner['location_y'] = None
-
-    def parse_pass_end_location(loc):
-        if pd.isna(loc):
-            return [None, None]
-        try:
-            parts = loc.split(',')
-            return [float(parts[0].strip()), float(parts[1].strip())]
-        except:
-            return [None, None]
-
-    if 'pass.end_location' in df_corner.columns:
-        locations = df_corner['pass.end_location'].astype(str).apply(parse_pass_end_location)
-        df_corner['pass_end_x'] = locations.apply(lambda x: x[0])
-        df_corner['pass_end_y'] = locations.apply(lambda x: x[1])
-    else:
-        df_corner['pass_end_x'] = None
-        df_corner['pass_end_y'] = None
-
-    if 'index' in df_corner.columns:
-        df_corner = df_corner.sort_values(by='index').reset_index(drop=True)
-    elif 'event_id' in df_corner.columns:
-        df_corner = df_corner.sort_values(by='event_id').reset_index(drop=True)
-
-    df_corner.columns = df_corner.columns.str.strip()
-
-    if 'event_type' not in df_corner.columns:
-        st.error("'event_type' column not found in the data.")
-        st.stop()
-
-    corner_passes = df_corner[df_corner['event_type'] == 'CornerPass'].copy()
-
-    if corner_passes.empty:
-        st.info("No corner passes found in the data.")
-        st.stop()
-
-    # Classify corner passes
-    results = []
-    for idx, row in corner_passes.iterrows():
-        side = 'Unknown'
-        x_loc = row.get('location_x')
-        y_loc = row.get('location_y')
-
-        if x_loc is not None and y_loc is not None:
-            if y_loc == 0.1:
-                side = 'Left'
-            elif y_loc == 80:
-                side = 'Right'
-
-        pass_height = row.get('pass.height.name', 'Unknown')
-        pass_body_part = row.get('pass.body_part.name', 'Unknown')
-        pass_outcome = row.get('pass.outcome.name', 'Unknown')
-        pass_technique = row.get('pass.technique.name', 'Unknown')
-
-        start_team = row.get('possession_team.id', row.get('team.id', None))
-        subsequent_events = df_corner.iloc[idx + 1:]
-
-        if start_team is not None:
-            same_possession = subsequent_events[
-                subsequent_events.get('possession_team.id', subsequent_events.get('team.id')) == start_team
-            ]
-        else:
-            same_possession = pd.DataFrame()
-
-        if same_possession.empty:
-            classification = 'No first contact - no shot'
-            xg_sum = 0.0
-        else:
-            first_contact = same_possession.iloc[0]
-            if first_contact['event_type'] == 'Shot':
-                classification = 'First contact - direct shot'
-            else:
-                shots_nearby = same_possession.head(3)[same_possession.head(3)['event_type'] == 'Shot']
-                if not shots_nearby.empty:
-                    classification = 'First contact - shot within 3 seconds'
-                else:
-                    any_shot = same_possession[same_possession['event_type'] == 'Shot']
-                    if not any_shot.empty:
-                        classification = 'No first contact - shot'
-                    else:
-                        classification = 'First contact - no shot'
-
-            # Calculate xG for this corner's possession
-            possession_id = row.get('possession', None)
-            if possession_id is not None:
-                same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
-                shots = same_possession[same_possession['event_type'] == 'Shot']
-                if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
-                    valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
-                    xg_sum = valid_xg_values.sum()
-                else:
-                    xg_sum = 0.0
-            else:
-                xg_sum = 0.0
-
-        results.append({
-            'corner_index': idx,
-            'classification': classification,
-            'side': side,
-            'pass_height': pass_height,
-            'pass_body_part': pass_body_part,
-            'pass_outcome': pass_outcome,
-            'pass_technique': pass_technique,
-            'pass_end_x': row.get('pass_end_x', None),
-            'pass_end_y': row.get('pass_end_y', None),
-            'team.name': row.get('team.name', 'Unknown'),
-            'player.name': row.get('player.name', 'Unknown'),
-            'Match': row.get('Match', 'Unknown'),
-            'competition.competition_name': row.get('competition.competition_name', 'Unknown'),
-            'season.season_name': row.get('season.season_name', 'Unknown'),
-            'xG': xg_sum
-        })
-
-    corner_summary = pd.DataFrame(results)
-
-    # Additional Sidebar Filters
-    pass_height_filter = st.sidebar.selectbox(
-        "Pass Height",
-        ["All"] + sorted(corner_summary["pass_height"].dropna().unique().tolist()),
-        key="pass_height_filter"
-    )
-
-    pass_body_part_filter = st.sidebar.selectbox(
-        "Pass Body Part",
-        ["All"] + sorted(corner_summary["pass_body_part"].dropna().unique().tolist()),
-        key="pass_body_part_filter"
-    )
-
-    pass_outcome_filter = st.sidebar.selectbox(
-        "Pass Outcome",
-        ["All"] + sorted(corner_summary["pass_outcome"].dropna().unique().tolist()),
-        key="pass_outcome_filter"
-    )
-
-    classification_filter = st.sidebar.selectbox(
-        "Corner Outcome Classification",
-        ["All"] + sorted(corner_summary["classification"].dropna().unique().tolist()),
-        key="classification_filter"
-    )
-    
-    # Additional filters for Team, Nation, League
-    team_filter = st.sidebar.selectbox(
-        "Filter by Team",
-        ["All"] + sorted(corner_summary["team.name"].dropna().unique().tolist()),
-        key="team_filter"
-    )
-    
-    league_filter = st.sidebar.selectbox(
-        "Filter by League",
-        ["All"] + sorted(corner_summary["competition.competition_name"].dropna().unique().tolist()),
-        key="league_filter"
-    )
-
-
-    # Apply filters
     filtered_corners = corner_summary.copy()
 
-    if corner_team_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["team.name"] == corner_team_filter]
-    if corner_technique_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["pass_technique"] == corner_technique_filter]
-    if corner_side_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["side"] == corner_side_filter]
-    if pass_height_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["pass_height"] == pass_height_filter]
-    if pass_body_part_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["pass_body_part"] == pass_body_part_filter]
-    if pass_outcome_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == pass_outcome_filter]
-    if classification_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["classification"] == classification_filter]
-        # New filters for Team, Nation, League
-    if team_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["team.name"] == team_filter]
-    if league_filter != "All":
-        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == league_filter]
-    
+    if f_team != "All":
+        filtered_corners = filtered_corners[filtered_corners["team.name"] == f_team]
+    if f_tech != "All":
+        filtered_corners = filtered_corners[filtered_corners["pass_technique"] == f_tech]
+    if f_side != "All":
+        filtered_corners = filtered_corners[filtered_corners["side"] == f_side]
+    if f_height != "All":
+        filtered_corners = filtered_corners[filtered_corners["pass_height"] == f_height]
+    if f_body != "All":
+        filtered_corners = filtered_corners[filtered_corners["pass_body_part"] == f_body]
+    if f_outcome != "All":
+        filtered_corners = filtered_corners[filtered_corners["pass_outcome"] == f_outcome]
+    if f_class != "All":
+        filtered_corners = filtered_corners[filtered_corners["classification"] == f_class]
+    if f_league != "All":
+        filtered_corners = filtered_corners[filtered_corners["competition.competition_name"] == f_league]
 
     if filtered_corners.empty:
         st.info("No corners found for the selected filters.")
-        st.stop()
+        return
 
-            # Calculate total shots and xG stats per unique corner possession
-    total_shots = 0
-    total_xg = 0.0
-    processed_possessions = set()
-    
-    for _, row in filtered_corners.iterrows():
-        corner_index = row['corner_index']
-        possession_id = df_corner.loc[corner_index, 'possession']
-    
-        if possession_id in processed_possessions:
-            continue
-        processed_possessions.add(possession_id)
-    
-        subsequent_events = df_corner.iloc[corner_index + 1:]
-        same_possession = subsequent_events[subsequent_events['possession'] == possession_id]
-    
-        shots = same_possession[same_possession['event_type'] == 'Shot']
-        total_shots += len(shots)
-    
-        if not shots.empty and 'shot.statsbomb_xg' in shots.columns:
-            valid_xg_values = shots['shot.statsbomb_xg'].dropna().astype(float)
-            total_xg += valid_xg_values.sum()
-    
-    # Metrics display outside loop
-    st.title("Corner Kick Analysis")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Corners", len(filtered_corners))
-    col2.metric("Total Shots from Corners", total_shots)
-    col3.metric("Total xG Generated", f"{total_xg:.2f}")
-    
-    if total_shots > 0:
-        st.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}")
-    else:
-        st.metric("Avg xG per Shot", "N/A")
+    # Metrics based on unique possession
+    unique_pos = filtered_corners["possession"].dropna().unique().tolist()
+    total_corners = len(filtered_corners)
+    total_xg = float(filtered_corners.drop_duplicates("possession")["xG"].sum()) if unique_pos else 0.0
 
+    # Shot counts from underlying df_corner within those possessions
+    df_shots = df_corner[df_corner["possession"].isin(unique_pos) & df_corner["event_type"].eq("Shot")]
+    total_shots = int(len(df_shots))
 
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Corners", total_corners)
+    c2.metric("Total Shots from Corners", total_shots)
+    c3.metric("Total xG Generated", f"{total_xg:.2f}")
+    c4.metric("Avg xG per Shot", f"{(total_xg / total_shots):.3f}" if total_shots > 0 else "N/A")
 
-
-
-    import plotly.graph_objects as go
-
-    valid_locations = filtered_corners.dropna(subset=['pass_end_x', 'pass_end_y'])
-    
+    # Plot: Corner pass end locations (vertical attacking half)
+    valid_locations = filtered_corners.dropna(subset=["pass_end_x", "pass_end_y"])
     if valid_locations.empty:
         st.info("No valid location data found for corner passes.")
     else:
         color_map = {
-            'First contact - direct shot': 'red',
-            'First contact - shot within 3 seconds': 'blue',
-            'No first contact - shot': 'green',
-            'First contact - no shot': 'orange',
-            'No first contact - no shot': 'gray'
+            "First contact - direct shot": "red",
+            "First contact - shot within 3 seconds": "blue",
+            "No first contact - shot": "green",
+            "First contact - no shot": "orange",
+            "No first contact - no shot": "gray"
         }
-    
-        # Pitch dimensions for attacking half
+
         pitch_length = 120
         pitch_width = 80
-    
+
         fig = go.Figure()
-    
-        # Add pitch outline and key features for attacking half
         fig.update_layout(
-            shapes=[
-                # Outer boundary (attacking half)
-                dict(type="rect", x0=0, y0=60, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
-                # Penalty area
-                dict(type="rect", x0=18, y0=102, x1=pitch_width - 18, y1=pitch_length, line=dict(color="black", width=2)),
-                # Six-yard box
-                dict(type="rect", x0=(pitch_width / 2) - 9, y0=114, x1=(pitch_width / 2) + 9, y1=pitch_length, line=dict(color="black", width=2)),
-                # Goal line
-                dict(type="line", x0=(pitch_width / 2) - 3.66, y0=pitch_length, x1=(pitch_width / 2) + 3.66, y1=pitch_length, line=dict(color="black", width=4)),
-                # Penalty spot
-                dict(type="circle", x0=(pitch_width / 2) - 0.5, y0=108 - 0.5, x1=(pitch_width / 2) + 0.5, y1=108 + 0.5, line=dict(color="black", width=2)),
-                # Penalty arc
-                dict(type="path",
-                     path=f'M {pitch_width / 2 - 10},{102} A 10,10 0 0,1 {pitch_width / 2 + 10},{102}',
-                     line=dict(color="black", width=2)),
-            ]
-        )
-    
-        # Plot corner pass end locations
-        for classification, df_group in valid_locations.groupby('classification'):
-            fig.add_trace(go.Scatter(
-                x=df_group['pass_end_y'],  # Swap axes for vertical pitch
-                y=df_group['pass_end_x'],
-                mode='markers',
-                name=classification,
-                marker=dict(size=10, color=color_map.get(classification, 'gray'), opacity=0.8, line=dict(width=1, color='black')),
-                hovertemplate=
-                    'Team: %{customdata[0]}<br>' +
-                    'Player: %{customdata[1]}<br>' +
-                    'Classification: %{customdata[2]}<br>' +
-                    'xG: %{customdata[3]:.2f}<extra></extra>',
-                customdata=df_group[['team.name', 'player.name', 'classification', 'xG']].values
-            ))
-    
-        fig.update_layout(
-            title='Corner Pass End Locations (Attacking Half - Vertical Pitch)',
+            title="Corner Pass End Locations (Attacking Half - Vertical Pitch)",
             showlegend=True,
-            width=700,
-            height=1000,
+            height=980,
+            margin=dict(t=60, b=20),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-5, pitch_width + 5]),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[55, pitch_length + 5]),
-            plot_bgcolor='white'
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            shapes=[
+                dict(type="rect", x0=0, y0=60, x1=pitch_width, y1=pitch_length, line=dict(color="black", width=2)),
+                dict(type="rect", x0=18, y0=102, x1=pitch_width - 18, y1=pitch_length, line=dict(color="black", width=2)),
+                dict(type="rect", x0=(pitch_width/2)-9, y0=114, x1=(pitch_width/2)+9, y1=pitch_length, line=dict(color="black", width=2)),
+                dict(type="line", x0=(pitch_width/2)-3.66, y0=pitch_length, x1=(pitch_width/2)+3.66, y1=pitch_length, line=dict(color="black", width=4)),
+                dict(type="circle", x0=(pitch_width/2)-0.5, y0=108-0.5, x1=(pitch_width/2)+0.5, y1=108+0.5, line=dict(color="black", width=2)),
+                dict(type="path",
+                    path=f"M {pitch_width/2 - 10},{102} A 10,10 0 0,1 {pitch_width/2 + 10},{102}",
+                    line=dict(color="black", width=2)),
+            ]
         )
-    
+
+        for classification, df_group in valid_locations.groupby("classification"):
+            fig.add_trace(go.Scattergl(
+                x=df_group["pass_end_y"],   # swap axes for vertical view
+                y=df_group["pass_end_x"],
+                mode="markers",
+                name=classification,
+                marker=dict(size=10, color=color_map.get(classification, "gray"), opacity=0.85, line=dict(width=1, color="black")),
+                hovertemplate=(
+                    "Team: %{customdata[0]}<br>"
+                    "Player: %{customdata[1]}<br>"
+                    "Classification: %{customdata[2]}<br>"
+                    "xG (possession): %{customdata[3]:.2f}<extra></extra>"
+                ),
+                customdata=df_group[["team.name", "player.name", "classification", "xG"]].values
+            ))
+
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown('<div class="annotation">End locations of corner deliveries, grouped by outcome</div>', unsafe_allow_html=True)
 
-
-
-    # Download button
+    # Download
     st.download_button(
         "Download Filtered Data as CSV",
         data=filtered_corners.to_csv(index=False),
         file_name="filtered_corner_passes.csv",
-        key="download_button"
+        key="download_corners"
     )
 
-    # Footer & Navigation
-    st.markdown("""
-        <div class="footer" style="text-align:center; margin-top: 50px;">
-            <p>© 2025 Football Analytics Team</p>
-            <button onclick="window.location.href='?section=None'" style="background-color: var(--fte-blue); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                Back to Main Menu
-            </button>
-        </div>
-    """, unsafe_allow_html=True)
+    with st.expander("Show filtered corner summary"):
+        st.dataframe(filtered_corners, use_container_width=True)
+
+    st.markdown('<div class="footer">© Football Analytics Team</div>', unsafe_allow_html=True)
+
+# -------------------- PENALTY ANALYSIS SECTION (placeholder) --------------------
+def render_penalties():
+    st.title("Penalty Analysis")
+    st.info("Penalty Analysis section is not implemented in your provided code.")
+    st.markdown('<div class="footer">© Football Analytics Team</div>', unsafe_allow_html=True)
+
+# -------------------- Router --------------------
+if section == "Shots Analysis":
+    render_shots()
+elif section == "Corner Routines":
+    render_corners()
+else:
+    render_penalties()
