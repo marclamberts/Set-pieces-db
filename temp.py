@@ -12,11 +12,106 @@ except Exception:
 
 st.set_page_config(page_title="Allsvenskan Corners 2025", layout="wide")
 
+# --- Modern UI Styling (white cards + soft shadows) ---
+st.markdown(
+    """
+<style>
+/* Page background + font */
+html, body, [class*="css"]  {
+    background-color: #f7f9fc;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
+
+/* Main padding */
+.block-container {
+    padding-top: 1.75rem;
+    padding-bottom: 2rem;
+    max-width: 1400px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #ffffff;
+    border-right: 1px solid #eef2f7;
+}
+section[data-testid="stSidebar"] .block-container {
+    padding-top: 1.25rem;
+}
+
+/* KPI cards (Streamlit metric containers) */
+div[data-testid="metric-container"] {
+    background: #ffffff;
+    padding: 18px 18px 14px 18px;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+    border: 1px solid #eef2f7;
+}
+div[data-testid="metric-container"] * {
+    font-weight: 600;
+}
+
+/* "Card" sections */
+.card {
+    background: #ffffff;
+    padding: 22px 22px 18px 22px;
+    border-radius: 22px;
+    box-shadow: 0 10px 35px rgba(15, 23, 42, 0.07);
+    border: 1px solid #eef2f7;
+    margin-bottom: 18px;
+}
+
+/* Subheaders spacing */
+h2, h3 {
+    margin-top: 0.25rem;
+}
+
+/* Buttons */
+.stDownloadButton button, .stButton button {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+    border-radius: 12px !important;
+    padding: 0.55em 1.05em !important;
+    border: none !important;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+.stDownloadButton button:hover, .stButton button:hover {
+    background-color: #1e40af !important;
+    color: #ffffff !important;
+}
+
+/* Dataframe rounding */
+div[data-testid="stDataFrame"] {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #eef2f7;
+}
+
+/* Soft divider */
+.hr {
+    border: none;
+    border-top: 1px solid #eef2f7;
+    margin: 18px 0;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 DEFAULT_FILE = "Allsvenskan - Corners 2025.xlsx"
 DEFAULT_SHEET = "Sheet 1"
 
-st.title("⚽ Allsvenskan – Corners 2025 Dashboard")
-st.caption("Filter, explore, and summarize corner events (and resulting shots/xG).")
+# --- Modern title block ---
+st.markdown(
+    """
+<h1 style="font-size:42px; font-weight:750; margin:0 0 6px 0; letter-spacing:-0.02em;">
+⚽ Allsvenskan – Corners 2025
+</h1>
+<p style="color:#6b7280; font-size:16px; margin:0 0 10px 0;">
+Modern set-piece analytics dashboard
+</p>
+""",
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_data(show_spinner=False)
@@ -78,23 +173,17 @@ df = load_data_from_excel(data_file)
 with st.sidebar:
     st.header("Filters")
 
-    # Team filter
     teams = sorted(pd.Series(df["team"]).dropna().unique().tolist())
     sel_teams = st.multiselect("Team (corner taker team)", teams, default=teams)
-
     df_team = df[df["team"].isin(sel_teams)] if sel_teams else df
 
-    # Match filter (dependent)
     matches = sorted(pd.Series(df_team["match"]).dropna().unique().tolist())
     sel_matches = st.multiselect("Match", matches, default=matches)
-
     df_match = df_team[df_team["match"].isin(sel_matches)] if sel_matches else df_team
 
-    # Taker filter (dependent)
     takers = sorted(pd.Series(df_match["taker"]).dropna().unique().tolist())
     sel_takers = st.multiselect("Taker", takers, default=takers)
 
-    # Technique / height / outcomes
     techniques = sorted(pd.Series(df_match["technique"]).dropna().unique().tolist())
     sel_techniques = st.multiselect("Technique", techniques, default=techniques)
 
@@ -102,9 +191,9 @@ with st.sidebar:
     sel_heights = st.multiselect("Pass height", heights, default=heights)
 
     sp_outcomes = sorted(pd.Series(df_match["sp_outcome"]).dropna().unique().tolist())
-    sel_sp_outcomes = st.multiselect("Set-piece outcome (SP_outcome)", sp_outcomes, default=sp_outcomes)
+    sel_sp_outcomes = st.multiselect("SP_outcome", sp_outcomes, default=sp_outcomes)
 
-    # Minute filter (SAFE: never create a slider when min==max)
+    # Minute filter (SAFE: no slider for min==max)
     minute_series = pd.to_numeric(df_match.get("Minute_num", pd.Series(dtype=float)), errors="coerce").dropna()
     minute_unique = np.sort(minute_series.unique()) if len(minute_series) else np.array([])
 
@@ -114,7 +203,7 @@ with st.sidebar:
     apply_single_minute = False
 
     if len(minute_unique) == 0:
-        st.info("Minute column is empty for current filters. Minute filtering disabled.")
+        st.caption("Minute filtering disabled (no minute values).")
     elif len(minute_unique) == 1:
         minute_single_value = int(minute_unique[0])
         apply_single_minute = st.checkbox(f"Filter to minute {minute_single_value}", value=False)
@@ -149,7 +238,7 @@ if sel_heights:
 if sel_sp_outcomes:
     f = f[f["sp_outcome"].isin(sel_sp_outcomes)]
 
-# Minute filter application (SAFE)
+# Minute filter application
 if "Minute_num" in f.columns:
     f = f.copy()
     f["Minute_num"] = pd.to_numeric(f["Minute_num"], errors="coerce")
@@ -159,40 +248,34 @@ if "Minute_num" in f.columns:
     elif minute_mode == "single" and apply_single_minute and minute_single_value is not None:
         f = f[f["Minute_num"] == minute_single_value]
 
-if only_shots:
+if only_shots and "is_shot" in f.columns:
     f = f[f["is_shot"]]
-
 
 # --- KPIs
 total_corners = len(f)
-
-if "match_id" in f.columns:
-    n_matches = int(f["match_id"].nunique())
-else:
-    n_matches = int(pd.Series(f["match"]).nunique())
-
+n_matches = int(f["match_id"].nunique()) if "match_id" in f.columns else int(pd.Series(f["match"]).nunique())
 corners_per_match = (total_corners / n_matches) if n_matches else 0.0
 
 shot_corners = int(f["is_shot"].sum()) if "is_shot" in f.columns else 0
 shot_rate = (shot_corners / total_corners) if total_corners else 0.0
 
-total_xg = float(pd.Series(f["xg"]).sum()) if "xg" in f.columns else 0.0
+total_xg = float(pd.Series(f.get("xg", 0)).sum())
 
 sp_txt = pd.Series(f.get("sp_outcome", "")).fillna("").astype(str)
 shot_within_3s = int(sp_txt.str.contains("shot within 3 seconds", case=False, na=False).sum())
 
 kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
-kpi1.metric("Corners (rows)", f"{total_corners:,}")
+kpi1.metric("Corners", f"{total_corners:,}")
 kpi2.metric("Matches", f"{n_matches:,}")
 kpi3.metric("Corners / match", f"{corners_per_match:.2f}")
 kpi4.metric("Shot rate", f"{shot_rate*100:.1f}%")
 kpi5.metric("Total xG", f"{total_xg:.3f}")
-kpi6.metric("Shots ≤3s after corner", f"{shot_within_3s:,}")
+kpi6.metric("Shots ≤3s", f"{shot_within_3s:,}")
 
-st.divider()
+st.markdown('<hr class="hr">', unsafe_allow_html=True)
 
-# --- Charts
-left, right = st.columns(2)
+# --- Charts (in modern cards)
+row1_left, row1_right = st.columns(2)
 
 team_counts = (
     f.groupby("team", dropna=False)
@@ -201,7 +284,8 @@ team_counts = (
      .reset_index(name="corners")
 )
 
-with left:
+with row1_left:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Corners by team")
     if len(team_counts) == 0:
         st.info("No data for current filters.")
@@ -211,6 +295,7 @@ with left:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.bar_chart(team_counts.set_index("team")["corners"])
+    st.markdown("</div>", unsafe_allow_html=True)
 
 tech_counts = (
     f.groupby("technique", dropna=False)
@@ -219,7 +304,8 @@ tech_counts = (
      .reset_index(name="corners")
 )
 
-with right:
+with row1_right:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Technique distribution")
     if len(tech_counts) == 0:
         st.info("No data for current filters.")
@@ -228,10 +314,9 @@ with right:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.dataframe(tech_counts, use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-st.divider()
-
-left2, right2 = st.columns(2)
+row2_left, row2_right = st.columns(2)
 
 taker_counts = (
     f.groupby("taker", dropna=False)
@@ -241,7 +326,8 @@ taker_counts = (
      .reset_index(name="corners")
 )
 
-with left2:
+with row2_left:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Top 15 corner takers")
     if len(taker_counts) == 0:
         st.info("No data for current filters.")
@@ -251,8 +337,10 @@ with left2:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.dataframe(taker_counts, use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-with right2:
+with row2_right:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Corners over time (minute)")
     time_df = f[["Minute_num"]].copy() if "Minute_num" in f.columns else pd.DataFrame()
     time_df["Minute_num"] = pd.to_numeric(time_df.get("Minute_num", np.nan), errors="coerce")
@@ -267,14 +355,15 @@ with right2:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.bar_chart(time_df["Minute_num"].value_counts().sort_index())
+    st.markdown("</div>", unsafe_allow_html=True)
 
-st.divider()
+row3_left, row3_right = st.columns(2)
 
-c1, c2 = st.columns(2)
-
-with c1:
+with row3_left:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Shot outcomes (from corners)")
     shots = f[f["is_shot"]].copy() if "is_shot" in f.columns else f.iloc[0:0].copy()
+
     if len(shots) == 0:
         st.info("No shots in the current filtered data.")
     else:
@@ -290,8 +379,10 @@ with c1:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.dataframe(shot_out, use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-with c2:
+with row3_right:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("xG from corners by team")
     if "xg" not in f.columns:
         st.info("No xG column found.")
@@ -310,9 +401,10 @@ with c2:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.dataframe(xg_team, use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-st.divider()
-
+# --- Table + download in a card
+st.markdown('<div class="card">', unsafe_allow_html=True)
 st.subheader("Filtered data")
 st.dataframe(f, use_container_width=True, hide_index=True)
 
@@ -323,3 +415,7 @@ st.download_button(
     file_name="allsvenskan_corners_filtered.csv",
     mime="text/csv",
 )
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Tiny footer
+st.caption("Built with Streamlit • White-card UI • Soft shadows")
