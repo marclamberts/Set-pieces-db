@@ -36,15 +36,21 @@ with st.sidebar:
     ht_all = sorted(df["height"].dropna().astype(str).unique().tolist())
     sel_ht = st.multiselect("Height", ht_all, default=ht_all)
 
+    # ✅ SAFE minute slider (won’t crash if min == max)
     min_s = _to_num(df["Minute_num"]).dropna()
     minute_range = None
-    if len(min_s) > 1:
-        minute_range = st.slider(
-            "Minute range",
-            int(min_s.min()),
-            int(min_s.max()),
-            (int(min_s.min()), int(min_s.max())),
-        )
+    if len(min_s) > 0:
+        min_val = int(min_s.min())
+        max_val = int(min_s.max())
+        if min_val < max_val:
+            minute_range = st.slider(
+                "Minute range",
+                min_val,
+                max_val,
+                (min_val, max_val),
+            )
+        else:
+            st.caption(f"All events recorded at minute {min_val}")
 
 # ── Filter ──
 f = df.copy()
