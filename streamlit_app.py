@@ -4,7 +4,6 @@ import numpy as np
 
 from utils import load_data, inject_css
 
-# ✅ Streamlit multipage app entrypoint
 st.set_page_config(
     page_title="Corners · Allsvenskan 2025",
     page_icon="⚽",
@@ -13,13 +12,8 @@ st.set_page_config(
 )
 
 inject_css()
-
-# ✅ Load data safely (utils.load_data already stops with a clear error if file is missing)
 df = load_data()
 
-# ─────────────────────────────────────────────────────────────
-# Sidebar
-# ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
         """
@@ -36,9 +30,9 @@ with st.sidebar:
 
     st.markdown("### Pages")
 
-    # ✅ Works on Streamlit Cloud (preferred), falls back to plain links if older Streamlit
+    # ✅ Streamlit Cloud-safe: entrypoint is streamlit_app.py
     try:
-        st.page_link("Home.py", label="🏠 Home", icon="🏠")
+        st.page_link("streamlit_app.py", label="🏠 Home", icon="🏠")
         st.page_link("pages/1_League_Overview.py", label="🏟️ League Overview", icon="🏟️")
         st.page_link("pages/2_Team_Analysis.py", label="🧭 Team Analysis", icon="🧭")
         st.page_link("pages/3_Match_View.py", label="🗓️ Match View", icon="🗓️")
@@ -55,9 +49,6 @@ with st.sidebar:
             """
         )
 
-# ─────────────────────────────────────────────────────────────
-# Hero
-# ─────────────────────────────────────────────────────────────
 st.markdown(
     """
     <div class="hero">
@@ -76,9 +67,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ─────────────────────────────────────────────────────────────
-# KPIs (robust even if some columns are missing)
-# ─────────────────────────────────────────────────────────────
 total = int(len(df))
 teams = int(df.get("team", pd.Series(dtype=object)).nunique())
 
@@ -91,9 +79,6 @@ shot_rate = shots / total if total else 0.0
 
 xg = float(df.get("xg", pd.Series([0.0] * len(df))).fillna(0).sum())
 cpm = total / matches if matches else 0.0
-
-shot_outcome = df.get("shot_outcome", pd.Series(dtype=object)).fillna("").astype(str)
-goals = int(shot_outcome.str.contains("goal", case=False, na=False).sum())
 
 st.markdown(
     f"""
@@ -133,9 +118,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ─────────────────────────────────────────────────────────────
-# Navigation cards (works on Streamlit Cloud)
-# ─────────────────────────────────────────────────────────────
 st.markdown(
     """
     <div class="section-title">Explore</div>
@@ -173,7 +155,7 @@ st.markdown(
 st.markdown(
     f"""
     <div class="footer">
-      Data rows loaded: {total:,}. If this is 0, check your Excel file name/sheet in <code>utils.py</code>.
+      Data rows loaded: {total:,}. Excel expected: <code>{'Allsvenskan - Corners 2025.xlsx'}</code>.
     </div>
     """,
     unsafe_allow_html=True,
