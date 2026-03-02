@@ -4,6 +4,7 @@ import numpy as np
 
 from utils import load_data, inject_css
 
+# ✅ Streamlit multipage app entrypoint
 st.set_page_config(
     page_title="Corners · Allsvenskan 2025",
     page_icon="⚽",
@@ -12,8 +13,13 @@ st.set_page_config(
 )
 
 inject_css()
+
+# ✅ Load data safely (utils.load_data already stops with a clear error if file is missing)
 df = load_data()
 
+# ─────────────────────────────────────────────────────────────
+# Sidebar
+# ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
         """
@@ -28,20 +34,41 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-# ── Hero ──
+    st.markdown("### Pages")
+
+    # ✅ Works on Streamlit Cloud (preferred), falls back to plain links if older Streamlit
+    try:
+        st.page_link("Home.py", label="🏠 Home", icon="🏠")
+        st.page_link("pages/1_League_Overview.py", label="🏟️ League Overview", icon="🏟️")
+        st.page_link("pages/2_Team_Analysis.py", label="🧭 Team Analysis", icon="🧭")
+        st.page_link("pages/3_Match_View.py", label="🗓️ Match View", icon="🗓️")
+        st.page_link("pages/4_Player_Profiles.py", label="🧑‍💼 Player Profiles", icon="🧑‍💼")
+        st.page_link("pages/5_Data_Explorer.py", label="📋 Data Explorer", icon="📋")
+    except Exception:
+        st.markdown(
+            """
+            - [🏟️ League Overview](./League_Overview)
+            - [🧭 Team Analysis](./Team_Analysis)
+            - [🗓️ Match View](./Match_View)
+            - [🧑‍💼 Player Profiles](./Player_Profiles)
+            - [📋 Data Explorer](./Data_Explorer)
+            """
+        )
+
+# ─────────────────────────────────────────────────────────────
+# Hero
+# ─────────────────────────────────────────────────────────────
 st.markdown(
     """
     <div class="hero">
       <div class="hero-eyebrow">Allsvenskan 2025 · StatsBomb Data</div>
       <div class="hero-title">Corner Kick<br/>Analytics</div>
       <div class="hero-sub">
-        Deep-dive into every corner kick taken in Allsvenskan 2025 — delivery technique,
-        taker profiles, xG generation, and set-piece outcomes.
+        Explore corner kick deliveries, taker profiles, outcomes, and xG generated from corners.
       </div>
       <div class="hero-badges">
-        <span class="badge">⚽ Live filters</span>
+        <span class="badge">⚽ Filters</span>
         <span class="badge">xG powered</span>
-        <span class="badge">Full season</span>
         <span class="badge">All matches</span>
       </div>
     </div>
@@ -49,21 +76,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── KPIs ──
-total = len(df)
-n_teams = int(df["team"].nunique())
-n_mat = df["match"].astype(str).replace("nan", np.nan).dropna().nunique()
-shots = int(df["is_shot"].fillna(False).sum())
-sr = shots / total if total else 0.0
-xg_tot = float(df["xg"].fillna(0).sum()) if "xg" in df.columns else 0.0
-goals = int(
-    df.get("shot_outcome", pd.Series(dtype=str))
-    .fillna("")
-    .astype(str)
-    .str.contains("Goal", case=False, na=False)
-    .sum()
-)
-cpm = total / n_mat if n_mat else 0.0
+# ─────────────────────────────────────────────────────────────
+# KPIs (robust even if some columns are missing)
+# ─────────────────────────────────────────────────────────────
+total = int(len(df))
+teams = int(df.get("team", pd.Series(dtype=object)).nunique())
+
+match_series = df.get("match", pd.Series(dtype=object)).astype(str).replace("nan", np.nan).dropna()
+matches = int(match_series.nunique())
+
+is_shot = df.get("is_shot", pd.Series([False] * len(df))).fillna(False).astype(bool)
+shots = int(is_shot.sum())
+shot_rate = shots / total if total else 0.0
+
+xg = float(df.get("xg", pd.Series([0.0] * len(df))).fillna(0).sum())
+cpm = total / matches if matches else 0.0
+
+shot_outcome = df.get("shot_outcome", pd.Series(dtype=object)).fillna("").astype(str)
+goals = int(shot_outcome.str.contains("goal", case=False, na=False).sum())
 
 st.markdown(
     f"""
@@ -74,63 +104,65 @@ st.markdown(
         <div class="kpi-hint">Full season</div>
       </div>
       <div class="kpi">
-        <div class="kpi-value">{n_mat:,}</div>
+        <div class="kpi-value">{matches:,}</div>
         <div class="kpi-label">Matches</div>
-        <div class="kpi-hint">Allsvenskan 2025</div>
+        <div class="kpi-hint">Unique fixtures</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">{teams:,}</div>
+        <div class="kpi-label">Teams</div>
+        <div class="kpi-hint">Unique clubs</div>
       </div>
       <div class="kpi">
         <div class="kpi-value">{cpm:.1f}</div>
         <div class="kpi-label">Corners / match</div>
-        <div class="kpi-hint">League average</div>
+        <div class="kpi-hint">Average</div>
       </div>
       <div class="kpi">
-        <div class="kpi-value">{sr*100:.1f}%</div>
+        <div class="kpi-value">{shot_rate*100:.1f}%</div>
         <div class="kpi-label">Shot rate</div>
         <div class="kpi-hint">Corner → shot</div>
       </div>
       <div class="kpi">
-        <div class="kpi-value">{xg_tot:.2f}</div>
+        <div class="kpi-value">{xg:.2f}</div>
         <div class="kpi-label">Total xG</div>
         <div class="kpi-hint">From corner shots</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-value">{goals}</div>
-        <div class="kpi-label">Goals</div>
-        <div class="kpi-hint">Direct from corners</div>
       </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# ── Nav cards ──
+# ─────────────────────────────────────────────────────────────
+# Navigation cards (works on Streamlit Cloud)
+# ─────────────────────────────────────────────────────────────
 st.markdown(
     """
-    <div class="section-title">Explore the data</div>
+    <div class="section-title">Explore</div>
     <div class="card-grid">
       <a class="navcard" href="./League_Overview">
         <div class="navcard-title">League Overview</div>
-        <div class="navcard-sub">Volume by team, technique mix, xG rankings, shot outcomes and timing distribution.</div>
+        <div class="navcard-sub">Team volumes, technique mix, xG rankings, outcomes, timing.</div>
         <div class="navcard-cta">→</div>
       </a>
       <a class="navcard" href="./Team_Analysis">
         <div class="navcard-title">Team Analysis</div>
-        <div class="navcard-sub">Drill into any club — taker profiles, delivery style, outcomes and efficiency.</div>
+        <div class="navcard-sub">Pick a club and break down takers, styles, outcomes and efficiency.</div>
         <div class="navcard-cta">→</div>
       </a>
       <a class="navcard" href="./Match_View">
         <div class="navcard-title">Match View</div>
-        <div class="navcard-sub">Select any fixture and inspect every corner — timing, technique, height and outcomes.</div>
+        <div class="navcard-sub">Select a fixture and inspect corners by team, timing and results.</div>
         <div class="navcard-cta">→</div>
       </a>
       <a class="navcard" href="./Player_Profiles">
         <div class="navcard-title">Player Profiles</div>
-        <div class="navcard-sub">Individual taker cards — volume, shot rate, xG per corner and preferences.</div>
+        <div class="navcard-sub">Individual taker profiles: volume, xG, style preferences.</div>
         <div class="navcard-cta">→</div>
       </a>
       <a class="navcard" href="./Data_Explorer">
         <div class="navcard-title">Data Explorer</div>
-        <div class="navcard-sub">Full filterable table with every corner event. Search, filter and export to CSV.</div>
+        <div class="navcard-sub">Filter, search, inspect and export the full corner event table.</div>
         <div class="navcard-cta">→</div>
       </a>
     </div>
@@ -139,9 +171,9 @@ st.markdown(
 )
 
 st.markdown(
-    """
+    f"""
     <div class="footer">
-      Built with StatsBomb open data · Allsvenskan 2025 · Corner kick events
+      Data rows loaded: {total:,}. If this is 0, check your Excel file name/sheet in <code>utils.py</code>.
     </div>
     """,
     unsafe_allow_html=True,
