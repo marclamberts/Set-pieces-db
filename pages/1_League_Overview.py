@@ -205,15 +205,12 @@ try:
     import matplotlib.pyplot as plt
     from mplsoccer import VerticalPitch
 
-    # Delivery end locations
-    deliv = f[["pass_end_location_x", "pass_end_location_y"]].copy()
-    deliv = deliv.dropna()
+    deliv = f[["pass_end_location_x", "pass_end_location_y"]].dropna()
     deliv = deliv[
         deliv["pass_end_location_x"].between(0, 120) &
         deliv["pass_end_location_y"].between(0, 80)
     ]
 
-    # Shot locations (from corners)
     shot = f[f["is_shot"] == True][["shot_location_x", "shot_location_y", "xg"]].copy()
     shot = shot.dropna(subset=["shot_location_x", "shot_location_y"])
     shot = shot[
@@ -227,11 +224,10 @@ try:
         linewidth=1,
         line_zorder=2,
         pitch_color="#10101a",
-        line_color="rgba(255,255,255,0.12)",
+        line_color=(1, 1, 1, 0.12),  # ✅ Matplotlib-friendly RGBA
     )
 
     fig, ax = pitch.draw(figsize=(7.6, 8.6))
-    ax.set_title("")  # keep clean
 
     # Delivery dots
     if len(deliv) > 0:
@@ -246,7 +242,7 @@ try:
             zorder=3,
         )
 
-    # Shot stars (size by xG)
+    # Shot stars sized by xG
     if len(shot) > 0:
         sizes = np.clip(shot["xg"].fillna(0).to_numpy() * 900, 35, 220)
         pitch.scatter(
@@ -261,7 +257,6 @@ try:
             zorder=4,
         )
 
-    # Little legend
     ax.text(
         0.02, 0.02,
         f"Deliveries: {len(deliv):,}   Shots: {len(shot):,}",
@@ -277,7 +272,7 @@ try:
     plt.close(fig)
 
 except Exception as e:
-    st.info(f"Pitch map unavailable (mplsoccer/matplotlib issue): {e}")
+    st.info(f"Pitch map unavailable: {e}")
 
 # ─────────────────────────────────────────────────────────────
 # Timing
