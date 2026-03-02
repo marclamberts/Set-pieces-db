@@ -51,14 +51,12 @@ with st.sidebar:
     ht_all = sorted(df["height"].dropna().astype(str).unique().tolist())
     sel_ht = st.multiselect("Height", ht_all, default=ht_all)
 
-    # ✅ SAFE minute slider
+    # ✅ SAFE minute slider (won’t crash if min == max)
     min_s = _to_num(df["Minute_num"]).dropna()
     minute_range = None
-
     if len(min_s) > 0:
         min_val = int(min_s.min())
         max_val = int(min_s.max())
-
         if min_val < max_val:
             minute_range = st.slider(
                 "Minute range",
@@ -100,7 +98,6 @@ goals = int(
 cpm = total / n_mat if n_mat else 0.0
 
 page_header("League Overview", "League Overview", f"{total:,} corners · {n_mat} matches")
-
 kpi_strip(
     [
         ("Corners", f"{total:,}", "Filtered"),
@@ -174,14 +171,13 @@ with c4:
     styled_donut(sout, "shot_outcome", "shots", height=380)
 
 # ─────────────────────────────────────────────────────────────
-# Efficiency Scatter
+# Efficiency scatter
 # ─────────────────────────────────────────────────────────────
 st.markdown(
     "<div class='section-title'>Team Efficiency: Shot Rate vs xG / Shot</div>"
     "<div class='hero-sub'>Top-right = most dangerous</div>",
     unsafe_allow_html=True,
 )
-
 eff = (
     f.groupby("team", dropna=False)
     .agg(
@@ -191,12 +187,97 @@ eff = (
     )
     .reset_index()
 )
-
 eff["shot_rate"] = eff["shot_count"] / eff["corners"].replace(0, np.nan)
 eff["xg_per_shot"] = eff["total_xg"] / eff["shot_count"].replace(0, np.nan)
 eff = eff.dropna(subset=["shot_rate", "xg_per_shot"])
-
 styled_scatter(eff, x="shot_rate", y="xg_per_shot", text="team", height=340)
+
+# ─────────────────────────────────────────────────────────────
+# Pitch map (StatsBomb, half, VerticalPitch)
+# ─────────────────────────────────────────────────────────────
+st.markdown(
+    "<div class='section-title'>Pitch Map: Corner Delivery & Shot Locations</div>"
+    "<div class='hero-sub'>Delivery end locations (dots) + shot locations from corners (stars)</div>",
+    unsafe_allow_html=True,
+)
+
+try:
+    import matplotlib.pyplot as plt
+    from mplsoccer import VerticalPitch
+
+    # Delivery end locations
+    deliv = f[["pass_end_location_x", "pass_end_location_y"]].copy()
+    deliv = deliv.dropna()
+    deliv = deliv[
+        deliv["pass_end_location_x"].between(0, 120) &
+        deliv["pass_end_location_y"].between(0, 80)
+    ]
+
+    # Shot locations (from corners)
+    shot = f[f["is_shot"] == True][["shot_location_x", "shot_location_y", "xg"]].copy()
+    shot = shot.dropna(subset=["shot_location_x", "shot_location_y"])
+    shot = shot[
+        shot["shot_location_x"].between(0, 120) &
+        shot["shot_location_y"].between(0, 80)
+    ]
+
+    pitch = VerticalPitch(
+        pitch_type="statsbomb",
+        half=True,
+        linewidth=1,
+        line_zorder=2,
+        pitch_color="#10101a",
+        line_color="rgba(255,255,255,0.12)",
+    )
+
+    fig, ax = pitch.draw(figsize=(7.6, 8.6))
+    ax.set_title("")  # keep clean
+
+    # Delivery dots
+    if len(deliv) > 0:
+        pitch.scatter(
+            deliv["pass_end_location_x"],
+            deliv["pass_end_location_y"],
+            ax=ax,
+            s=18,
+            alpha=0.22,
+            edgecolors="none",
+            color="#a855f7",
+            zorder=3,
+        )
+
+    # Shot stars (size by xG)
+    if len(shot) > 0:
+        sizes = np.clip(shot["xg"].fillna(0).to_numpy() * 900, 35, 220)
+        pitch.scatter(
+            shot["shot_location_x"],
+            shot["shot_location_y"],
+            ax=ax,
+            s=sizes,
+            alpha=0.75,
+            marker="*",
+            edgecolors="none",
+            color="#22d3a0",
+            zorder=4,
+        )
+
+    # Little legend
+    ax.text(
+        0.02, 0.02,
+        f"Deliveries: {len(deliv):,}   Shots: {len(shot):,}",
+        transform=ax.transAxes,
+        fontsize=10,
+        color="#b7b7d8",
+        ha="left",
+        va="bottom",
+        bbox=dict(facecolor="#10101a", edgecolor="none", alpha=0.7, pad=6),
+    )
+
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+except Exception as e:
+    st.info(f"Pitch map unavailable (mplsoccer/matplotlib issue): {e}")
 
 # ─────────────────────────────────────────────────────────────
 # Timing
