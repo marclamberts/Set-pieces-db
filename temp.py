@@ -69,15 +69,23 @@ with st.sidebar:
     team_sel = st.multiselect("Teams", teams_all, default=teams_all)
     tech_sel = st.multiselect("Technique", techniques_all, default=techniques_all)
 
+    # ✅ SAFE minute slider (won’t crash if min == max)
     mins = _to_num(df["Minute_num"]).dropna()
     minute_range = None
-    if len(mins) > 1:
-        minute_range = st.slider(
-            "Minute range",
-            int(mins.min()),
-            int(mins.max()),
-            (int(mins.min()), int(mins.max())),
-        )
+
+    if len(mins) > 0:
+        min_val = int(mins.min())
+        max_val = int(mins.max())
+
+        if min_val < max_val:
+            minute_range = st.slider(
+                "Minute range",
+                min_val,
+                max_val,
+                (min_val, max_val),
+            )
+        else:
+            st.caption(f"Minute range: all events at minute {min_val}")
 
     only_shots = st.toggle("Only corners → shot", value=False)
 
@@ -100,7 +108,12 @@ if only_shots:
 total = int(len(f))
 teams = int(f.get("team", pd.Series(dtype=object)).nunique())
 
-match_series = f.get("match", pd.Series(dtype=object)).astype(str).replace("nan", np.nan).dropna()
+match_series = (
+    f.get("match", pd.Series(dtype=object))
+    .astype(str)
+    .replace("nan", np.nan)
+    .dropna()
+)
 matches = int(match_series.nunique())
 
 is_shot = f.get("is_shot", pd.Series([False] * len(f))).fillna(False).astype(bool)
@@ -127,6 +140,11 @@ st.markdown(
         <span class="badge">Teams: {len(team_sel) if team_sel else 0}</span>
         <span class="badge">Techniques: {len(tech_sel) if tech_sel else 0}</span>
         <span class="badge">Only shots: {"Yes" if only_shots else "No"}</span>
+      </div>
+      <div class="hero-badges" style="margin-top:10px;">
+        <span class="badge">⚽ Live filters</span>
+        <span class="badge">xG powered</span>
+        <span class="badge">All matches</span>
       </div>
     </div>
     """,
@@ -172,7 +190,7 @@ st.markdown(
 )
 
 # ─────────────────────────────────────────────────────────────
-# Main content layout
+# Main content
 # ─────────────────────────────────────────────────────────────
 left, right = st.columns([1.35, 1], gap="large")
 
@@ -183,31 +201,34 @@ with left:
         unsafe_allow_html=True,
     )
 
-    by_team = (
-        f.groupby("team", dropna=False)
-        .agg(corners=("team", "size"), xg=("xg", "sum"), shots=("is_shot", "sum"))
-        .reset_index()
-    )
-    by_team["xg_per_corner"] = by_team["xg"] / by_team["corners"].replace(0, np.nan)
-    by_team["shot_rate"] = by_team["shots"] / by_team["corners"].replace(0, np.nan)
-    by_team = by_team.sort_values(["corners", "xg"], ascending=[False, False])
+    if len(f) == 0:
+        st.info("No events match the current filters.")
+    else:
+        by_team = (
+            f.groupby("team", dropna=False)
+            .agg(corners=("team", "size"), xg=("xg", "sum"), shots=("is_shot", "sum"))
+            .reset_index()
+        )
+        by_team["xg_per_corner"] = by_team["xg"] / by_team["corners"].replace(0, np.nan)
+        by_team["shot_rate"] = by_team["shots"] / by_team["corners"].replace(0, np.nan)
+        by_team = by_team.sort_values(["corners", "xg"], ascending=[False, False])
 
-    c1, c2 = st.columns(2, gap="medium")
+        c1, c2 = st.columns(2, gap="medium")
 
-    with c1:
-        top_corners = by_team.head(10).sort_values("corners", ascending=True)
-        styled_bar(top_corners, x="corners", y="team", orientation="h", height=360)
+        with c1:
+            top_corners = by_team.head(10).sort_values("corners", ascending=True)
+            styled_bar(top_corners, x="corners", y="team", orientation="h", height=360)
 
-    with c2:
-        top_xg = by_team.head(10).sort_values("xg", ascending=True)
-        styled_bar(top_xg, x="xg", y="team", orientation="h", height=360)
+        with c2:
+            top_xg = by_team.head(10).sort_values("xg", ascending=True)
+            styled_bar(top_xg, x="xg", y="team", orientation="h", height=360)
 
-    st.markdown(
-        "<div class='section-title'>Timing</div>"
-        "<div class='hero-sub'>When corners happen (minute distribution)</div>",
-        unsafe_allow_html=True,
-    )
-    styled_histogram(_to_num(f["Minute_num"]), nbins=28, height=260)
+        st.markdown(
+            "<div class='section-title'>Timing</div>"
+            "<div class='hero-sub'>When corners happen (minute distribution)</div>",
+            unsafe_allow_html=True,
+        )
+        styled_histogram(_to_num(f["Minute_num"]), nbins=28, height=260)
 
 with right:
     st.markdown(
@@ -225,7 +246,6 @@ with right:
     )
 
     matches_all = sorted(df["match"].dropna().astype(str).unique().tolist())
-    # Prefer a match with lots of corners, so it looks interesting
     match_counts = (
         df.groupby("match", dropna=False)
         .size()
@@ -234,12 +254,16 @@ with right:
         .tolist()
     )
     default_match = match_counts[0] if match_counts else (matches_all[0] if matches_all else "")
-    match_pick = st.selectbox("Match", matches_all, index=matches_all.index(default_match) if default_match in matches_all else 0)
+    match_pick = st.selectbox(
+        "Match",
+        matches_all,
+        index=matches_all.index(default_match) if default_match in matches_all else 0,
+    )
 
     mf = df[df["match"].astype(str) == str(match_pick)].copy()
     m_total = len(mf)
-    m_shots = int(mf["is_shot"].fillna(False).sum())
-    m_xg = float(mf["xg"].fillna(0).sum())
+    m_shots = int(mf["is_shot"].fillna(False).sum()) if m_total else 0
+    m_xg = float(mf["xg"].fillna(0).sum()) if m_total else 0.0
     m_sr = (m_shots / m_total) if m_total else 0.0
 
     st.markdown(
@@ -271,11 +295,19 @@ with right:
         unsafe_allow_html=True,
     )
 
-    mt = mf.groupby("team", dropna=False).size().reset_index(name="corners").sort_values("corners", ascending=True)
-    styled_bar(mt, x="corners", y="team", orientation="h", height=240)
+    if m_total:
+        mt = (
+            mf.groupby("team", dropna=False)
+            .size()
+            .reset_index(name="corners")
+            .sort_values("corners", ascending=True)
+        )
+        styled_bar(mt, x="corners", y="team", orientation="h", height=240)
+    else:
+        st.info("No events found for this match.")
 
 # ─────────────────────────────────────────────────────────────
-# Explore cards (same as before, but placed after insights)
+# Explore cards
 # ─────────────────────────────────────────────────────────────
 st.markdown(
     """
@@ -314,8 +346,8 @@ st.markdown(
 st.markdown(
     f"""
     <div class="footer">
-      Showing <b>{total:,}</b> corner events (filtered).
-      Excel expected: <code>Allsvenskan - Corners 2025.xlsx</code>.
+      Showing <b>{total:,}</b> corner events (filtered). · Goals (direct): <b>{goals}</b>
+      <br/>Excel expected: <code>Allsvenskan - Corners 2025.xlsx</code>.
     </div>
     """,
     unsafe_allow_html=True,
