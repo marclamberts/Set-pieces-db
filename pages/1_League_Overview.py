@@ -12,6 +12,20 @@ st.set_page_config(page_title="League Overview · Corners", page_icon="🏟️",
 inject_css()
 df = load_data()
 
+# 🔒 Hide any accidental code blocks rendering
+st.markdown(
+    """
+    <style>
+      div[data-testid="stCodeBlock"] { display: none !important; }
+      div[data-testid="stMarkdownContainer"] pre { display: none !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ─────────────────────────────────────────────────────────────
+# Sidebar
+# ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
         """
@@ -27,6 +41,7 @@ with st.sidebar:
     )
 
     st.markdown("#### Filters")
+
     teams_all = sorted(df["team"].dropna().astype(str).unique().tolist())
     sel_teams = st.multiselect("Teams", teams_all, default=teams_all)
 
@@ -36,12 +51,14 @@ with st.sidebar:
     ht_all = sorted(df["height"].dropna().astype(str).unique().tolist())
     sel_ht = st.multiselect("Height", ht_all, default=ht_all)
 
-    # ✅ SAFE minute slider (won’t crash if min == max)
+    # ✅ SAFE minute slider
     min_s = _to_num(df["Minute_num"]).dropna()
     minute_range = None
+
     if len(min_s) > 0:
         min_val = int(min_s.min())
         max_val = int(min_s.max())
+
         if min_val < max_val:
             minute_range = st.slider(
                 "Minute range",
@@ -52,7 +69,9 @@ with st.sidebar:
         else:
             st.caption(f"All events recorded at minute {min_val}")
 
-# ── Filter ──
+# ─────────────────────────────────────────────────────────────
+# Filtering
+# ─────────────────────────────────────────────────────────────
 f = df.copy()
 if sel_teams:
     f = f[f["team"].isin(sel_teams)]
@@ -63,6 +82,9 @@ if sel_ht:
 if minute_range:
     f = f[_to_num(f["Minute_num"]).between(minute_range[0], minute_range[1])]
 
+# ─────────────────────────────────────────────────────────────
+# KPIs
+# ─────────────────────────────────────────────────────────────
 total = len(f)
 n_mat = f["match"].astype(str).replace("nan", np.nan).dropna().nunique()
 shots = int(f["is_shot"].fillna(False).sum())
@@ -78,6 +100,7 @@ goals = int(
 cpm = total / n_mat if n_mat else 0.0
 
 page_header("League Overview", "League Overview", f"{total:,} corners · {n_mat} matches")
+
 kpi_strip(
     [
         ("Corners", f"{total:,}", "Filtered"),
@@ -89,7 +112,9 @@ kpi_strip(
     ]
 )
 
+# ─────────────────────────────────────────────────────────────
 # Row 1
+# ─────────────────────────────────────────────────────────────
 c1, c2 = st.columns(2)
 
 with c1:
@@ -115,7 +140,9 @@ with c2:
     tech = f.groupby("technique", dropna=False).size().reset_index(name="n")
     styled_donut(tech, "technique", "n", height=380)
 
+# ─────────────────────────────────────────────────────────────
 # Row 2
+# ─────────────────────────────────────────────────────────────
 c3, c4 = st.columns(2)
 
 with c3:
@@ -146,12 +173,15 @@ with c4:
     )
     styled_donut(sout, "shot_outcome", "shots", height=380)
 
-# Scatter
+# ─────────────────────────────────────────────────────────────
+# Efficiency Scatter
+# ─────────────────────────────────────────────────────────────
 st.markdown(
     "<div class='section-title'>Team Efficiency: Shot Rate vs xG / Shot</div>"
     "<div class='hero-sub'>Top-right = most dangerous</div>",
     unsafe_allow_html=True,
 )
+
 eff = (
     f.groupby("team", dropna=False)
     .agg(
@@ -161,12 +191,16 @@ eff = (
     )
     .reset_index()
 )
+
 eff["shot_rate"] = eff["shot_count"] / eff["corners"].replace(0, np.nan)
 eff["xg_per_shot"] = eff["total_xg"] / eff["shot_count"].replace(0, np.nan)
 eff = eff.dropna(subset=["shot_rate", "xg_per_shot"])
+
 styled_scatter(eff, x="shot_rate", y="xg_per_shot", text="team", height=340)
 
+# ─────────────────────────────────────────────────────────────
 # Timing
+# ─────────────────────────────────────────────────────────────
 st.markdown(
     "<div class='section-title'>Corner Timing Distribution</div>"
     "<div class='hero-sub'>When in the match are corners awarded?</div>",
@@ -174,7 +208,9 @@ st.markdown(
 )
 styled_histogram(_to_num(f["Minute_num"]), nbins=30, height=260)
 
+# ─────────────────────────────────────────────────────────────
 # Height + SP outcome
+# ─────────────────────────────────────────────────────────────
 c5, c6 = st.columns(2)
 
 with c5:
