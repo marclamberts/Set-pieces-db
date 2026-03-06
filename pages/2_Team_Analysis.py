@@ -28,7 +28,7 @@ df["height"] = df["pass.height.name"].astype(str)
 df["minute_num"] = pd.to_numeric(df["Minute"], errors="coerce")
 df["xg"] = pd.to_numeric(df["shot.statsbomb_xg"], errors="coerce").fillna(0)
 df["shot_outcome"] = df["shot.outcome.name"].astype(str)
-df["sp_outcome"] = df["SP_outcome"].astype(str)
+df["sp_outcome"] = df["SP_outcome"].astype(str).replace("", "Unknown").fillna("Unknown")
 
 df["is_shot"] = (
     df["shot_timestamp"].notna()
@@ -56,11 +56,18 @@ with st.sidebar:
     focus = st.selectbox("Team", teams_all)
 
     st.markdown("#### Filters")
+
     tech_all = sorted(df["technique"].dropna().unique().tolist())
     sel_tech = st.multiselect("Technique", tech_all, default=tech_all)
 
     ht_all = sorted(df["height"].dropna().unique().tolist())
     sel_ht = st.multiselect("Height", ht_all, default=ht_all)
+
+    sp_all = sorted(df["sp_outcome"].dropna().unique().tolist())
+    sel_sp = st.multiselect("SP Outcome", sp_all, default=sp_all)
+
+    taker_all = sorted(df["taker"].dropna().unique().tolist())
+    sel_taker = st.multiselect("Taker", taker_all, default=taker_all)
 
     st.markdown("#### Shot / xG")
     shots_only = st.checkbox("Only corners that led to a shot", value=False)
@@ -86,6 +93,12 @@ if sel_tech:
 
 if sel_ht:
     f = f[f["height"].isin(sel_ht)]
+
+if sel_sp:
+    f = f[f["sp_outcome"].isin(sel_sp)]
+
+if sel_taker:
+    f = f[f["taker"].isin(sel_taker)]
 
 if shots_only:
     f = f[f["is_shot"]]
