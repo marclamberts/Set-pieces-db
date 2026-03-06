@@ -27,7 +27,7 @@ df["xg"] = pd.to_numeric(df["shot.statsbomb_xg"], errors="coerce").fillna(0)
 df["shot_outcome"] = df["shot.outcome.name"].astype(str)
 df["sp_outcome"] = df["SP_outcome"].astype(str)
 
-# Shot flag: true when a shot exists on the corner sequence
+# Shot flag
 df["is_shot"] = (
     df["shot_timestamp"].notna()
     | df["Shooter"].notna()
@@ -94,7 +94,7 @@ f = f[(f["xg"] >= sel_xg[0]) & (f["xg"] <= sel_xg[1])]
 # KPIs
 # -----------------------------
 total = len(f)
-n_mat = f["match"].dropna().nunique()
+n_mat = f["match"].replace("nan", np.nan).dropna().nunique()
 shots = int(f["is_shot"].fillna(False).sum())
 sr = shots / total if total else 0.0
 xg = float(f["xg"].sum()) if total else 0.0
@@ -118,6 +118,87 @@ kpi_strip(
         ("Goals", f"{goals}", "Direct"),
     ]
 )
+
+# -----------------------------
+# Top section: pitch map replaces code box
+# -----------------------------
+st.markdown(
+    "<div class='section-title'>Total Pitch Map</div>"
+    "<div class='hero-sub'>All filtered corner deliveries and shot locations</div>",
+    unsafe_allow_html=True,
+)
+
+# Match the app dark background
+PANEL_BG = "#111827"
+LINE_COL = "#2a3342"
+TEXT_COL = "#e5e7eb"
+DELIVERY_COL = "#94a3b8"
+SHOT_FACE = "#38bdf8"
+SHOT_EDGE = "#e2e8f0"
+
+# Delivery end locations
+deliveries = f[["pass_end_location_x", "pass_end_location_y"]].copy()
+deliveries["pass_end_location_x"] = pd.to_numeric(deliveries["pass_end_location_x"], errors="coerce")
+deliveries["pass_end_location_y"] = pd.to_numeric(deliveries["pass_end_location_y"], errors="coerce")
+deliveries = deliveries.dropna()
+
+# Shot locations
+shots_df = f.loc[f["is_shot"], ["shot_location_x", "shot_location_y", "xg"]].copy()
+shots_df["shot_location_x"] = pd.to_numeric(shots_df["shot_location_x"], errors="coerce")
+shots_df["shot_location_y"] = pd.to_numeric(shots_df["shot_location_y"], errors="coerce")
+shots_df["xg"] = pd.to_numeric(shots_df["xg"], errors="coerce").fillna(0)
+shots_df = shots_df.dropna(subset=["shot_location_x", "shot_location_y"])
+
+if deliveries.empty and shots_df.empty:
+    st.info("No valid pitch coordinates available after filtering.")
+else:
+    pitch = VerticalPitch(
+        pitch_type="statsbomb",
+        half=True,
+        pitch_color=PANEL_BG,
+        line_color=LINE_COL,
+        linewidth=1.2,
+        line_zorder=2,
+    )
+
+    fig, ax = pitch.draw(figsize=(7, 9))
+    fig.patch.set_facecolor(PANEL_BG)
+    ax.set_facecolor(PANEL_BG)
+
+    if not deliveries.empty:
+        pitch.scatter(
+            deliveries["pass_end_location_x"],
+            deliveries["pass_end_location_y"],
+            ax=ax,
+            s=42,
+            color=DELIVERY_COL,
+            alpha=0.35,
+            zorder=3,
+        )
+
+    if not shots_df.empty:
+        shot_sizes = 70 + (shots_df["xg"].clip(lower=0, upper=1) * 260)
+        pitch.scatter(
+            shots_df["shot_location_x"],
+            shots_df["shot_location_y"],
+            ax=ax,
+            s=shot_sizes,
+            color=SHOT_FACE,
+            edgecolors=SHOT_EDGE,
+            linewidths=0.9,
+            alpha=0.95,
+            zorder=4,
+        )
+
+    ax.set_title(
+        f"{focus} · Corner deliveries and shot locations",
+        color=TEXT_COL,
+        fontsize=14,
+        pad=12,
+    )
+
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
 # -----------------------------
 # Main charts
@@ -185,64 +266,3 @@ st.markdown(
     unsafe_allow_html=True,
 )
 styled_histogram(_to_num(f["minute_num"]), nbins=20, height=240)
-
-# -----------------------------
-# Total pitch map
-# -----------------------------
-st.markdown(
-    "<div class='section-title'>Total Pitch Map</div>"
-    "<div class='hero-sub'>All filtered corner deliveries plotted on a vertical StatsBomb half pitch, with shot locations overlaid</div>",
-    unsafe_allow_html=True,
-)
-
-# All events = corner delivery end locations
-deliveries = f[["pass_end_location_x", "pass_end_location_y"]].copy()
-deliveries["pass_end_location_x"] = pd.to_numeric(deliveries["pass_end_location_x"], errors="coerce")
-deliveries["pass_end_location_y"] = pd.to_numeric(deliveries["pass_end_location_y"], errors="coerce")
-deliveries = deliveries.dropna()
-
-# Shots = shot locations
-shots_df = f.loc[f["is_shot"], ["shot_location_x", "shot_location_y", "xg"]].copy()
-shots_df["shot_location_x"] = pd.to_numeric(shots_df["shot_location_x"], errors="coerce")
-shots_df["shot_location_y"] = pd.to_numeric(shots_df["shot_location_y"], errors="coerce")
-shots_df["xg"] = pd.to_numeric(shots_df["xg"], errors="coerce").fillna(0)
-shots_df = shots_df.dropna(subset=["shot_location_x", "shot_location_y"])
-
-if deliveries.empty and shots_df.empty:
-    st.info("No valid pitch coordinates available after filtering.")
-else:
-    pitch = VerticalPitch(
-        pitch_type="statsbomb",
-        half=True,
-        line_zorder=2,
-    )
-
-    fig, ax = pitch.draw(figsize=(7, 9))
-
-    if not deliveries.empty:
-        pitch.scatter(
-            deliveries["pass_end_location_x"],
-            deliveries["pass_end_location_y"],
-            ax=ax,
-            s=45,
-            alpha=0.35,
-            zorder=3,
-        )
-
-    if not shots_df.empty:
-        shot_sizes = 80 + (shots_df["xg"].clip(lower=0, upper=1) * 220)
-        pitch.scatter(
-            shots_df["shot_location_x"],
-            shots_df["shot_location_y"],
-            ax=ax,
-            s=shot_sizes,
-            marker="o",
-            edgecolors="black",
-            linewidths=0.8,
-            alpha=0.9,
-            zorder=4,
-        )
-
-    ax.set_title(f"{focus} · Corner deliveries and shot locations", pad=12)
-    st.pyplot(fig, use_container_width=False)
-    plt.close(fig)
