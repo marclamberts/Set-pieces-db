@@ -110,7 +110,6 @@ goals = int(
 
 page_header("Team Analysis", focus, f"{total:,} corners in {n_mat} matches")
 
-# Native Streamlit metrics instead of kpi_strip()
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Corners", f"{total:,}")
 m2.metric("Matches", f"{n_mat}")
@@ -126,61 +125,54 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
     pitch_bg = "#0b1020"
     line_col = "#24324a"
     text_col = "#e5e7eb"
-    delivery_col = "rgba(148,163,184,0.35)"
     shot_col = "#38bdf8"
     shot_line = "#e2e8f0"
 
+    sp_colors = {
+        "Goal": "#22c55e",
+        "Shot": "#f59e0b",
+        "Blocked": "#ef4444",
+        "Won": "#a78bfa",
+        "Lost": "#64748b",
+        "Clearance": "#06b6d4",
+        "Saved": "#f97316",
+        "Off Target": "#eab308",
+        "On Target": "#14b8a6",
+        "Unknown": "#94a3b8",
+    }
+
     fig = go.Figure()
 
-    # StatsBomb pitch dimensions
-    pitch_length = 120
-    pitch_width = 80
-
-    # Half-pitch attacking end: x from 60 to 120
     x0, x1 = 60, 120
     y0, y1 = 0, 80
 
     shapes = []
 
-    # Outer boundary
     shapes.append(dict(type="rect", x0=x0, y0=y0, x1=x1, y1=y1, line=dict(color=line_col, width=2)))
-
-    # Halfway line
     shapes.append(dict(type="line", x0=60, y0=0, x1=60, y1=80, line=dict(color=line_col, width=2)))
-
-    # Penalty area
     shapes.append(dict(type="rect", x0=102, y0=18, x1=120, y1=62, line=dict(color=line_col, width=2)))
-
-    # Six-yard box
     shapes.append(dict(type="rect", x0=114, y0=30, x1=120, y1=50, line=dict(color=line_col, width=2)))
-
-    # Goal
     shapes.append(dict(type="rect", x0=120, y0=36, x1=122, y1=44, line=dict(color=line_col, width=2)))
+    shapes.append(
+        dict(
+            type="circle",
+            x0=107.5 - 0.4,
+            y0=40 - 0.4,
+            x1=107.5 + 0.4,
+            y1=40 + 0.4,
+            line=dict(color=line_col, width=2),
+            fillcolor=line_col,
+        )
+    )
 
-    # Penalty spot
-    shapes.append(dict(type="circle", x0=107.5 - 0.4, y0=40 - 0.4, x1=107.5 + 0.4, y1=40 + 0.4,
-                       line=dict(color=line_col, width=2), fillcolor=line_col))
-
-    # Centre arc on half-way side
-    shapes.append(dict(
-        type="path",
-        path="""
-            M 69.15 31.85
-            Q 60 40 69.15 48.15
-        """,
-        line=dict(color=line_col, width=2)
-    ))
-
-    # Penalty arc
     theta = np.linspace(np.deg2rad(130), np.deg2rad(230), 100)
     arc_x = 107.5 + 10 * np.cos(theta)
     arc_y = 40 + 10 * np.sin(theta)
     path = "M " + " L ".join([f"{x} {y}" for x, y in zip(arc_x, arc_y)])
     shapes.append(dict(type="path", path=path, line=dict(color=line_col, width=2)))
 
-    # Corner arcs
-    corner_r = 2
     t1 = np.linspace(0, np.pi / 2, 25)
+    corner_r = 2
     path_bl = "M " + " L ".join([f"{120 - corner_r*np.cos(t)} {0 + corner_r*np.sin(t)}" for t in t1])
     path_tl = "M " + " L ".join([f"{120 - corner_r*np.cos(t)} {80 - corner_r*np.sin(t)}" for t in t1])
     shapes.append(dict(type="path", path=path_bl, line=dict(color=line_col, width=2)))
@@ -215,21 +207,51 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
             xanchor="right",
             x=1,
             font=dict(color=text_col),
-            bgcolor="rgba(0,0,0,0)"
+            bgcolor="rgba(0,0,0,0)",
         ),
     )
 
     if not deliveries.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=deliveries["pass_end_location_x"],
-                y=deliveries["pass_end_location_y"],
-                mode="markers",
-                name="Deliveries",
-                marker=dict(size=9, color=delivery_col),
-                hovertemplate="Delivery<br>x=%{x}<br>y=%{y}<extra></extra>",
+        deliveries = deliveries.copy()
+        deliveries["sp_outcome"] = deliveries["sp_outcome"].fillna("Unknown").replace("", "Unknown")
+
+        for outcome in sorted(deliveries["sp_outcome"].unique()):
+            dsub = deliveries[deliveries["sp_outcome"] == outcome]
+            color = sp_colors.get(outcome, "#94a3b8")
+
+            fig.add_trace(
+                go.Scatter(
+                    x=dsub["pass_end_location_x"],
+                    y=dsub["pass_end_location_y"],
+                    mode="markers",
+                    name=f"SP: {outcome}",
+                    marker=dict(
+                        size=10,
+                        color=color,
+                        opacity=0.65,
+                        line=dict(color="rgba(255,255,255,0.15)", width=0.5),
+                    ),
+                    customdata=np.stack(
+                        [
+                            dsub["taker"].fillna(""),
+                            dsub["sp_outcome"].fillna(""),
+                            dsub["technique"].fillna(""),
+                            dsub["height"].fillna(""),
+                        ],
+                        axis=-1,
+                    ),
+                    hovertemplate=(
+                        "Delivery"
+                        "<br>x=%{x}"
+                        "<br>y=%{y}"
+                        "<br>Taker=%{customdata[0]}"
+                        "<br>SP outcome=%{customdata[1]}"
+                        "<br>Technique=%{customdata[2]}"
+                        "<br>Height=%{customdata[3]}"
+                        "<extra></extra>"
+                    ),
+                )
             )
-        )
 
     if not shots_df.empty:
         sizes = 10 + shots_df["xg"].clip(lower=0, upper=1) * 28
@@ -245,8 +267,21 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
                     line=dict(color=shot_line, width=1.2),
                     opacity=0.95,
                 ),
-                customdata=np.stack([shots_df["xg"]], axis=-1),
-                hovertemplate="Shot<br>x=%{x}<br>y=%{y}<br>xG=%{customdata[0]:.3f}<extra></extra>",
+                customdata=np.stack(
+                    [
+                        shots_df["xg"].fillna(0),
+                        shots_df["shot_outcome"].fillna(""),
+                    ],
+                    axis=-1,
+                ),
+                hovertemplate=(
+                    "Shot"
+                    "<br>x=%{x}"
+                    "<br>y=%{y}"
+                    "<br>xG=%{customdata[0]:.3f}"
+                    "<br>Outcome=%{customdata[1]}"
+                    "<extra></extra>"
+                ),
             )
         )
 
@@ -259,12 +294,26 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-deliveries = f[["pass_end_location_x", "pass_end_location_y"]].copy()
+deliveries = f[
+    [
+        "pass_end_location_x",
+        "pass_end_location_y",
+        "sp_outcome",
+        "taker",
+        "technique",
+        "height",
+    ]
+].copy()
+
 deliveries["pass_end_location_x"] = pd.to_numeric(deliveries["pass_end_location_x"], errors="coerce")
 deliveries["pass_end_location_y"] = pd.to_numeric(deliveries["pass_end_location_y"], errors="coerce")
-deliveries = deliveries.dropna()
+deliveries = deliveries.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
 
-shots_df = f.loc[f["is_shot"], ["shot_location_x", "shot_location_y", "xg"]].copy()
+shots_df = f.loc[
+    f["is_shot"],
+    ["shot_location_x", "shot_location_y", "xg", "shot_outcome"]
+].copy()
+
 shots_df["shot_location_x"] = pd.to_numeric(shots_df["shot_location_x"], errors="coerce")
 shots_df["shot_location_y"] = pd.to_numeric(shots_df["shot_location_y"], errors="coerce")
 shots_df["xg"] = pd.to_numeric(shots_df["xg"], errors="coerce").fillna(0)
