@@ -128,19 +128,6 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
     shot_col = "#38bdf8"
     shot_line = "#e2e8f0"
 
-    sp_colors = {
-        "Goal": "#22c55e",
-        "Shot": "#f59e0b",
-        "Blocked": "#ef4444",
-        "Won": "#a78bfa",
-        "Lost": "#64748b",
-        "Clearance": "#06b6d4",
-        "Saved": "#f97316",
-        "Off Target": "#eab308",
-        "On Target": "#14b8a6",
-        "Unknown": "#94a3b8",
-    }
-
     fig = go.Figure()
 
     x0, x1 = 60, 120
@@ -215,9 +202,19 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
         deliveries = deliveries.copy()
         deliveries["sp_outcome"] = deliveries["sp_outcome"].fillna("Unknown").replace("", "Unknown")
 
-        for outcome in sorted(deliveries["sp_outcome"].unique()):
+        outcomes = sorted(deliveries["sp_outcome"].unique())
+
+        palette = [
+            "#636EFA", "#EF553B", "#00CC96", "#AB63FA",
+            "#FFA15A", "#19D3F3", "#FF6692", "#B6E880",
+            "#FF97FF", "#FECB52", "#2EC4B6", "#E71D36",
+            "#8B5CF6", "#10B981", "#F59E0B", "#EC4899",
+            "#3B82F6", "#84CC16", "#F97316", "#14B8A6"
+        ]
+        color_map = {o: palette[i % len(palette)] for i, o in enumerate(outcomes)}
+
+        for outcome in outcomes:
             dsub = deliveries[deliveries["sp_outcome"] == outcome]
-            color = sp_colors.get(outcome, "#94a3b8")
 
             fig.add_trace(
                 go.Scatter(
@@ -227,9 +224,9 @@ def draw_plotly_half_pitch(deliveries, shots_df, title):
                     name=f"SP: {outcome}",
                     marker=dict(
                         size=10,
-                        color=color,
-                        opacity=0.65,
-                        line=dict(color="rgba(255,255,255,0.15)", width=0.5),
+                        color=color_map[outcome],
+                        opacity=0.72,
+                        line=dict(color="rgba(255,255,255,0.25)", width=0.6),
                     ),
                     customdata=np.stack(
                         [
