@@ -1,13 +1,16 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from mplsoccer import VerticalPitch
+import plotly.graph_objects as go
 
 from utils import (
-    load_data, inject_css, _to_num,
-    styled_bar, styled_donut, styled_histogram,
-    page_header, kpi_strip
+    load_data,
+    inject_css,
+    _to_num,
+    styled_bar,
+    styled_donut,
+    styled_histogram,
+    page_header,
 )
 
 st.set_page_config(page_title="Team Analysis · Corners", page_icon="🧭", layout="wide")
@@ -27,14 +30,13 @@ df["xg"] = pd.to_numeric(df["shot.statsbomb_xg"], errors="coerce").fillna(0)
 df["shot_outcome"] = df["shot.outcome.name"].astype(str)
 df["sp_outcome"] = df["SP_outcome"].astype(str)
 
-# Shot flag
 df["is_shot"] = (
     df["shot_timestamp"].notna()
     | df["Shooter"].notna()
     | (df["xg"] > 0)
 )
 
-teams_all = sorted(df["team"].dropna().astype(str).unique().tolist())
+teams_all = sorted(df["team"].dropna().unique().tolist())
 
 with st.sidebar:
     st.markdown(
@@ -54,10 +56,10 @@ with st.sidebar:
     focus = st.selectbox("Team", teams_all)
 
     st.markdown("#### Filters")
-    tech_all = sorted(df["technique"].dropna().astype(str).unique().tolist())
+    tech_all = sorted(df["technique"].dropna().unique().tolist())
     sel_tech = st.multiselect("Technique", tech_all, default=tech_all)
 
-    ht_all = sorted(df["height"].dropna().astype(str).unique().tolist())
+    ht_all = sorted(df["height"].dropna().unique().tolist())
     sel_ht = st.multiselect("Height", ht_all, default=ht_all)
 
     st.markdown("#### Shot / xG")
@@ -77,7 +79,7 @@ with st.sidebar:
 # -----------------------------
 # Filtering
 # -----------------------------
-f = df[df["team"] == str(focus)].copy()
+f = df[df["team"] == focus].copy()
 
 if sel_tech:
     f = f[f["technique"].isin(sel_tech)]
@@ -102,47 +104,166 @@ xg_c = xg / total if total else 0.0
 goals = int(
     f["shot_outcome"]
     .fillna("")
-    .astype(str)
     .str.contains("Goal", case=False, na=False)
     .sum()
 )
 
 page_header("Team Analysis", focus, f"{total:,} corners in {n_mat} matches")
-kpi_strip(
-    [
-        ("Corners", f"{total:,}", "Total"),
-        ("Matches", f"{n_mat}", "Unique"),
-        ("Shot rate", f"{sr*100:.1f}%", "→ shot"),
-        ("Total xG", f"{xg:.3f}", "From shots"),
-        ("xG / corner", f"{xg_c:.4f}", "Efficiency"),
-        ("Goals", f"{goals}", "Direct"),
-    ]
-)
+
+# Native Streamlit metrics instead of kpi_strip()
+m1, m2, m3, m4, m5, m6 = st.columns(6)
+m1.metric("Corners", f"{total:,}")
+m2.metric("Matches", f"{n_mat}")
+m3.metric("Shot rate", f"{sr*100:.1f}%")
+m4.metric("Total xG", f"{xg:.3f}")
+m5.metric("xG / corner", f"{xg_c:.4f}")
+m6.metric("Goals", f"{goals}")
 
 # -----------------------------
-# Top section: pitch map replaces code box
+# Plotly vertical half pitch
 # -----------------------------
+def draw_plotly_half_pitch(deliveries, shots_df, title):
+    pitch_bg = "#0b1020"
+    line_col = "#24324a"
+    text_col = "#e5e7eb"
+    delivery_col = "rgba(148,163,184,0.35)"
+    shot_col = "#38bdf8"
+    shot_line = "#e2e8f0"
+
+    fig = go.Figure()
+
+    # StatsBomb pitch dimensions
+    pitch_length = 120
+    pitch_width = 80
+
+    # Half-pitch attacking end: x from 60 to 120
+    x0, x1 = 60, 120
+    y0, y1 = 0, 80
+
+    shapes = []
+
+    # Outer boundary
+    shapes.append(dict(type="rect", x0=x0, y0=y0, x1=x1, y1=y1, line=dict(color=line_col, width=2)))
+
+    # Halfway line
+    shapes.append(dict(type="line", x0=60, y0=0, x1=60, y1=80, line=dict(color=line_col, width=2)))
+
+    # Penalty area
+    shapes.append(dict(type="rect", x0=102, y0=18, x1=120, y1=62, line=dict(color=line_col, width=2)))
+
+    # Six-yard box
+    shapes.append(dict(type="rect", x0=114, y0=30, x1=120, y1=50, line=dict(color=line_col, width=2)))
+
+    # Goal
+    shapes.append(dict(type="rect", x0=120, y0=36, x1=122, y1=44, line=dict(color=line_col, width=2)))
+
+    # Penalty spot
+    shapes.append(dict(type="circle", x0=107.5 - 0.4, y0=40 - 0.4, x1=107.5 + 0.4, y1=40 + 0.4,
+                       line=dict(color=line_col, width=2), fillcolor=line_col))
+
+    # Centre arc on half-way side
+    shapes.append(dict(
+        type="path",
+        path="""
+            M 69.15 31.85
+            Q 60 40 69.15 48.15
+        """,
+        line=dict(color=line_col, width=2)
+    ))
+
+    # Penalty arc
+    theta = np.linspace(np.deg2rad(130), np.deg2rad(230), 100)
+    arc_x = 107.5 + 10 * np.cos(theta)
+    arc_y = 40 + 10 * np.sin(theta)
+    path = "M " + " L ".join([f"{x} {y}" for x, y in zip(arc_x, arc_y)])
+    shapes.append(dict(type="path", path=path, line=dict(color=line_col, width=2)))
+
+    # Corner arcs
+    corner_r = 2
+    t1 = np.linspace(0, np.pi / 2, 25)
+    path_bl = "M " + " L ".join([f"{120 - corner_r*np.cos(t)} {0 + corner_r*np.sin(t)}" for t in t1])
+    path_tl = "M " + " L ".join([f"{120 - corner_r*np.cos(t)} {80 - corner_r*np.sin(t)}" for t in t1])
+    shapes.append(dict(type="path", path=path_bl, line=dict(color=line_col, width=2)))
+    shapes.append(dict(type="path", path=path_tl, line=dict(color=line_col, width=2)))
+
+    fig.update_layout(
+        shapes=shapes,
+        paper_bgcolor=pitch_bg,
+        plot_bgcolor=pitch_bg,
+        margin=dict(l=10, r=10, t=50, b=10),
+        height=760,
+        title=dict(text=title, font=dict(size=18, color=text_col), x=0.02),
+        xaxis=dict(
+            range=[58, 123],
+            showgrid=False,
+            zeroline=False,
+            visible=False,
+            scaleanchor="y",
+            scaleratio=1,
+        ),
+        yaxis=dict(
+            range=[-2, 82],
+            showgrid=False,
+            zeroline=False,
+            visible=False,
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(color=text_col),
+            bgcolor="rgba(0,0,0,0)"
+        ),
+    )
+
+    if not deliveries.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=deliveries["pass_end_location_x"],
+                y=deliveries["pass_end_location_y"],
+                mode="markers",
+                name="Deliveries",
+                marker=dict(size=9, color=delivery_col),
+                hovertemplate="Delivery<br>x=%{x}<br>y=%{y}<extra></extra>",
+            )
+        )
+
+    if not shots_df.empty:
+        sizes = 10 + shots_df["xg"].clip(lower=0, upper=1) * 28
+        fig.add_trace(
+            go.Scatter(
+                x=shots_df["shot_location_x"],
+                y=shots_df["shot_location_y"],
+                mode="markers",
+                name="Shots",
+                marker=dict(
+                    size=sizes,
+                    color=shot_col,
+                    line=dict(color=shot_line, width=1.2),
+                    opacity=0.95,
+                ),
+                customdata=np.stack([shots_df["xg"]], axis=-1),
+                hovertemplate="Shot<br>x=%{x}<br>y=%{y}<br>xG=%{customdata[0]:.3f}<extra></extra>",
+            )
+        )
+
+    return fig
+
+
 st.markdown(
     "<div class='section-title'>Total Pitch Map</div>"
     "<div class='hero-sub'>All filtered corner deliveries and shot locations</div>",
     unsafe_allow_html=True,
 )
 
-# Match the app dark background
-PANEL_BG = "#111827"
-LINE_COL = "#2a3342"
-TEXT_COL = "#e5e7eb"
-DELIVERY_COL = "#94a3b8"
-SHOT_FACE = "#38bdf8"
-SHOT_EDGE = "#e2e8f0"
-
-# Delivery end locations
 deliveries = f[["pass_end_location_x", "pass_end_location_y"]].copy()
 deliveries["pass_end_location_x"] = pd.to_numeric(deliveries["pass_end_location_x"], errors="coerce")
 deliveries["pass_end_location_y"] = pd.to_numeric(deliveries["pass_end_location_y"], errors="coerce")
 deliveries = deliveries.dropna()
 
-# Shot locations
 shots_df = f.loc[f["is_shot"], ["shot_location_x", "shot_location_y", "xg"]].copy()
 shots_df["shot_location_x"] = pd.to_numeric(shots_df["shot_location_x"], errors="coerce")
 shots_df["shot_location_y"] = pd.to_numeric(shots_df["shot_location_y"], errors="coerce")
@@ -152,53 +273,12 @@ shots_df = shots_df.dropna(subset=["shot_location_x", "shot_location_y"])
 if deliveries.empty and shots_df.empty:
     st.info("No valid pitch coordinates available after filtering.")
 else:
-    pitch = VerticalPitch(
-        pitch_type="statsbomb",
-        half=True,
-        pitch_color=PANEL_BG,
-        line_color=LINE_COL,
-        linewidth=1.2,
-        line_zorder=2,
+    fig = draw_plotly_half_pitch(
+        deliveries=deliveries,
+        shots_df=shots_df,
+        title=f"{focus} · Corner deliveries and shot locations",
     )
-
-    fig, ax = pitch.draw(figsize=(7, 9))
-    fig.patch.set_facecolor(PANEL_BG)
-    ax.set_facecolor(PANEL_BG)
-
-    if not deliveries.empty:
-        pitch.scatter(
-            deliveries["pass_end_location_x"],
-            deliveries["pass_end_location_y"],
-            ax=ax,
-            s=42,
-            color=DELIVERY_COL,
-            alpha=0.35,
-            zorder=3,
-        )
-
-    if not shots_df.empty:
-        shot_sizes = 70 + (shots_df["xg"].clip(lower=0, upper=1) * 260)
-        pitch.scatter(
-            shots_df["shot_location_x"],
-            shots_df["shot_location_y"],
-            ax=ax,
-            s=shot_sizes,
-            color=SHOT_FACE,
-            edgecolors=SHOT_EDGE,
-            linewidths=0.9,
-            alpha=0.95,
-            zorder=4,
-        )
-
-    ax.set_title(
-        f"{focus} · Corner deliveries and shot locations",
-        color=TEXT_COL,
-        fontsize=14,
-        pad=12,
-    )
-
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # -----------------------------
 # Main charts
