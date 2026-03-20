@@ -732,6 +732,7 @@ league_match_df = match_summary[
 ].copy()
 
 league_event_df = df[df["match_id"].isin(league_match_df["match_id"].unique())].copy()
+league_event_df = add_advanced_features(league_event_df)
 league_event_df = league_event_df[
     (league_event_df["Minute"].fillna(0) >= minute_range[0]) &
     (league_event_df["Minute"].fillna(0) <= minute_range[1])
@@ -765,8 +766,7 @@ if outcome_filter:
     league_event_df = league_event_df[league_event_df["outcome_bucket"].isin(outcome_filter)]
 
 league_match_df = league_match_df[league_match_df["match_id"].isin(league_event_df["match_id"].unique())]
-league_event_df = add_advanced_features(league_event_df)
-league_team_df = build_team_summary(league_event_df) if not league_event_df.empty else build_team_summary(df.iloc[0:0].copy())
+league_team_df = build_team_summary(league_event_df) if not league_event_df.empty else build_team_summary(add_advanced_features(df.iloc[0:0].copy()))
 
 
 def team_insight_table(source_df):
