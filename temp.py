@@ -672,14 +672,34 @@ selected_matches = st.sidebar.multiselect("Matches", all_matches)
 
 minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
 minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 120
-minute_range = st.sidebar.slider("Minute Range", min_value=minute_min, max_value=minute_max, value=(minute_min, minute_max))
+
+if minute_max <= minute_min:
+    minute_range = (minute_min, minute_max)
+    st.sidebar.caption(f"Minute Range: {minute_min}")
+else:
+    minute_range = st.sidebar.slider(
+        "Minute Range",
+        min_value=minute_min,
+        max_value=minute_max,
+        value=(minute_min, minute_max),
+    )
 
 if len(match_summary) > 0:
     min_corners = int(match_summary["total_corners"].min())
     max_corners = int(match_summary["total_corners"].max())
 else:
     min_corners, max_corners = 0, 0
-corner_range = st.sidebar.slider("Match Corner Range", min_value=min_corners, max_value=max_corners, value=(min_corners, max_corners))
+
+if max_corners <= min_corners:
+    corner_range = (min_corners, max_corners)
+    st.sidebar.caption(f"Match Corner Range: {min_corners}")
+else:
+    corner_range = st.sidebar.slider(
+        "Match Corner Range",
+        min_value=min_corners,
+        max_value=max_corners,
+        value=(min_corners, max_corners),
+    )
 
 show_shot_only = st.sidebar.checkbox("Shot outcomes only", value=False)
 show_inswing_only = st.sidebar.checkbox("Inswingers only", value=False)
