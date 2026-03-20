@@ -790,9 +790,23 @@ def team_insight_table(source_df):
 def add_advanced_features(source_df):
     df2 = source_df.copy()
     if df2.empty:
+        if "venue_split" not in df2.columns:
+            df2["venue_split"] = pd.Series(dtype="object")
+        if "delivery_length_band" not in df2.columns:
+            df2["delivery_length_band"] = pd.Series(dtype="object")
+        if "xg_created" not in df2.columns:
+            df2["xg_created"] = pd.Series(dtype="float")
+        if "goal_from_corner" not in df2.columns:
+            df2["goal_from_corner"] = pd.Series(dtype="bool")
+        if "delivery_success_proxy" not in df2.columns:
+            df2["delivery_success_proxy"] = pd.Series(dtype="bool")
         return df2
 
-    df2["venue_split"] = np.where(df2["is_home_corner"], "Home", np.where(df2["is_away_corner"], "Away", "Unknown"))
+    df2["venue_split"] = np.where(
+        df2["is_home_corner"],
+        "Home",
+        np.where(df2["is_away_corner"], "Away", "Unknown")
+    )
     df2["delivery_length_band"] = pd.cut(
         df2["delivery_length"],
         bins=[-0.1, 8, 16, 28, 200],
@@ -801,7 +815,11 @@ def add_advanced_features(source_df):
     ).astype(str)
     df2["xg_created"] = df2["shot_xg"].fillna(0)
     df2["goal_from_corner"] = df2["shot_outcome"].astype(str).str.contains("goal", case=False, na=False)
-    df2["delivery_success_proxy"] = df2["led_to_shot"] | df2["is_first_contact_shot"] | df2["is_goal_kick_zone_delivery"]
+    df2["delivery_success_proxy"] = (
+        df2["led_to_shot"].fillna(False)
+        | df2["is_first_contact_shot"].fillna(False)
+        | df2["is_goal_kick_zone_delivery"].fillna(False)
+    )
     return df2
 
 
