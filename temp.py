@@ -12,7 +12,34 @@ st.set_page_config(
 )
 
 FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
+# LOGIN
+LOGIN_NAME = "Admin"
+LOGIN_PASSWORD = "Football2026"
 
+
+def login_screen():
+    st.title("⚽ Set Piece Studio")
+    st.subheader("Login")
+
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("Name")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
+
+        if submitted:
+            if username == LOGIN_NAME and password == LOGIN_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Invalid name or password.")
+
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    login_screen()
+    st.stop()
 
 # =========================================================
 # STYLING
