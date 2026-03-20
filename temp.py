@@ -1,9 +1,12 @@
+import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 st.set_page_config(page_title="Corners App", layout="wide")
+
+FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
 
 
 def safe_numeric(series):
@@ -12,6 +15,7 @@ def safe_numeric(series):
 
 def find_col(df, candidates):
     lower_map = {str(c).strip().lower(): c for c in df.columns}
+
     for cand in candidates:
         if cand.lower() in lower_map:
             return lower_map[cand.lower()]
@@ -28,8 +32,7 @@ def split_match_name(match_value):
     if not isinstance(match_value, str):
         return None, None
 
-    separators = [" - ", " vs ", " v "]
-    for sep in separators:
+    for sep in [" - ", " vs ", " v "]:
         if sep in match_value:
             left, right = match_value.split(sep, 1)
             return left.strip(), right.strip()
@@ -38,8 +41,12 @@ def split_match_name(match_value):
 
 
 @st.cache_data
-def load_excel(uploaded_file):
-    return pd.read_excel(uploaded_file)
+def load_data():
+    if not os.path.exists(FILE_NAME):
+        raise FileNotFoundError(
+            f"{FILE_NAME} not found. Put it in the same folder as temp.py"
+        )
+    return pd.read_excel(FILE_NAME)
 
 
 def prepare_data(df):
@@ -47,28 +54,25 @@ def prepare_data(df):
     df.columns = [str(c).strip() for c in df.columns]
 
     match_id_col = find_col(df, ["match_id", "match id"])
-    match_col = find_col(df, ["Match", "match"])
+    match_col = find_col(df, ["match"])
     team_col = find_col(df, ["pass_team_name", "team", "team_name"])
-    minute_col = find_col(df, ["Minute", "minute"])
-    second_col = find_col(df, ["Second", "second"])
-    outcome_col = find_col(df, ["SP_outcome", "outcome"])
-    xg_col = find_col(df, ["shot.statsbomb_xg", "xg", "shot_xg"])
+    minute_col = find_col(df, ["minute"])
+    second_col = find_col(df, ["second"])
+    outcome_col = find_col(df, ["sp_outcome", "outcome"])
+    xg_col = find_col(df, ["shot.statsbomb_xg", "shot_xg", "xg"])
 
-    required_missing = []
-    for name, col in {
+    required = {
         "match_id": match_id_col,
-        "Match": match_col,
+        "match": match_col,
         "pass_team_name": team_col,
-        "Minute": minute_col,
-        "Second": second_col,
-    }.items():
-        if col is None:
-            required_missing.append(name)
+        "minute": minute_col,
+        "second": second_col,
+    }
 
-    if required_missing:
+    missing = [name for name, col in required.items() if col is None]
+    if missing:
         raise ValueError(
-            f"Missing required columns: {required_missing}. "
-            f"Available columns: {list(df.columns)}"
+            f"Missing required columns: {missing}. Available columns: {list(df.columns)}"
         )
 
     df = df.rename(columns={
@@ -153,32 +157,24 @@ def prepare_data(df):
     return df, match_summary, team_summary
 
 
-st.title("⚽ Corners Dashboard")
-st.caption("Upload your Excel file and explore corner-event data.")
-
-uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
-
-if uploaded_file is None:
-    st.info("Upload your Excel file to start.")
-    st.stop()
+st.title("⚽ Allsvenskan Corners Dashboard")
+st.caption("Reads data directly from Allsvenskan - Corners 2025.xlsx")
 
 try:
-    raw_df = load_excel(uploaded_file)
+    raw_df = load_data()
 except Exception as e:
-    st.error("Could not read the Excel file.")
+    st.error("Failed to load the Excel file.")
     st.exception(e)
     st.stop()
 
 try:
     df, match_summary, team_summary = prepare_data(raw_df)
 except Exception as e:
-    st.error("Could not prepare the data.")
+    st.error("Failed to prepare the data.")
     st.exception(e)
     st.write("Detected columns:")
     st.write(list(raw_df.columns))
     st.stop()
-
-st.success("File loaded successfully.")
 
 teams = sorted([t for t in team_summary["team"].dropna().unique().tolist() if str(t).strip()])
 selected_team = st.sidebar.selectbox("Team", ["All Teams"] + teams)
@@ -241,7 +237,11 @@ with tab1:
     with col_b:
         st.subheader("Match Total Corners")
         if not match_df.empty:
-            fig = px.histogram(match_df, x="total_corners", nbins=min(20, max(5, len(match_df))))
+            fig = px.histogram(
+                match_df,
+                x="total_corners",
+                nbins=min(20, max(5, len(match_df)))
+            )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No data for current filters.")
@@ -289,4 +289,8 @@ with tab3:
 
 with tab4:
     st.subheader("Raw Event Data")
-    st.dataframe(event_df.reset_index(drop=True), use_container_width=True, height=500)
+    st.dataframe(
+        event_df.reset_index(drop=True),
+        use_container_width=True,
+        height=500,
+    )
