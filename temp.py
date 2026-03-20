@@ -154,6 +154,10 @@ def prepare_data(df):
         team_summary["shots_from_corners"] / team_summary["corners_taken"].replace(0, np.nan)
     )
 
+    team_summary["xg_per_match"] = (
+        team_summary["total_xg"] / team_summary["matches"].replace(0, np.nan)
+    )
+
     return df, match_summary, team_summary
 
 
@@ -210,15 +214,121 @@ match_df = match_df[
 valid_match_ids = match_df["match_id"].unique()
 event_df = event_df[event_df["match_id"].isin(valid_match_ids)]
 
+# league-wide tables should ignore the team filter but respect the corner range
+league_match_df = match_summary[
+    (match_summary["total_corners"] >= corner_range[0]) &
+    (match_summary["total_corners"] <= corner_range[1])
+].copy()
+
+league_match_ids = league_match_df["match_id"].unique()
+league_event_df = df[df["match_id"].isin(league_match_ids)].copy()
+
+league_team_summary = (
+    league_event_df.groupby("corner_team", dropna=False)
+    .agg(
+        corners_taken=("match_id", "size"),
+        matches=("match_id", pd.Series.nunique),
+        shots_from_corners=("led_to_shot", "sum"),
+        total_xg=("shot_xg", "sum"),
+        avg_xg_per_corner=("shot_xg", "mean"),
+    )
+    .reset_index()
+    .rename(columns={"corner_team": "team"})
+)
+
+league_team_summary["corners_per_match"] = (
+    league_team_summary["corners_taken"] / league_team_summary["matches"].replace(0, np.nan)
+)
+league_team_summary["shot_rate"] = (
+    league_team_summary["shots_from_corners"] / league_team_summary["corners_taken"].replace(0, np.nan)
+)
+league_team_summary["xg_per_match"] = (
+    league_team_summary["total_xg"] / league_team_summary["matches"].replace(0, np.nan)
+)
+
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Corner Events", len(event_df))
 c2.metric("Matches", event_df["match_id"].nunique())
 c3.metric("Teams", event_df["corner_team"].nunique())
 c4.metric("Shot Outcomes", int(event_df["led_to_shot"].sum()))
 
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Teams", "Matches", "Raw Data"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["League Overview", "Overview", "Teams", "Matches", "Raw Data"]
+)
 
 with tab1:
+    st.subheader("League Overview")
+
+    lc1, lc2, lc3, lc4 = st.columns(4)
+    lc1.metric("League Matches", int(league_match_df["match_id"].nunique()))
+    lc2.metric("League Corner Events", int(len(league_event_df)))
+    lc3.metric("Avg Corners / Match", f"{league_match_df['total_corners'].mean():.2f}" if not league_match_df.empty else "0.00")
+    lc4.metric("Avg xG / Match", f"{league_match_df['total_xg'].mean():.2f}" if not league_match_df.empty else "0.00")
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.subheader("Corners per Team (League)")
+        if not league_team_summary.empty:
+            fig = px.bar(
+                league_team_summary.sort_values("corners_taken", ascending=False),
+                x="team",
+                y="corners_taken",
+                hover_data=["matches", "corners_per_match", "shots_from_corners", "shot_rate", "total_xg", "xg_per_match"],
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No league data available.")
+
+    with col_b:
+        st.subheader("Average Corners per Match by Team")
+        if not league_team_summary.empty:
+            fig = px.bar(
+                league_team_summary.sort_values("corners_per_match", ascending=False),
+                x="team",
+                y="corners_per_match",
+                hover_data=["corners_taken", "matches", "shots_from_corners", "shot_rate"],
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No league data available.")
+
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        st.subheader("League Match Total Corners Distribution")
+        if not league_match_df.empty:
+            fig = px.histogram(
+                league_match_df,
+                x="total_corners",
+                nbins=min(20, max(5, len(league_match_df)))
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No league match data available.")
+
+    with col_d:
+        st.subheader("League Corner Timing")
+        if not league_event_df.empty:
+            timing = league_event_df.copy()
+            bins = list(range(0, 101, 5))
+            timing["minute_band"] = pd.cut(timing["event_minute"], bins=bins, right=False)
+            timing_summary = timing.groupby("minute_band", observed=False).size().reset_index(name="corners")
+            timing_summary["minute_band"] = timing_summary["minute_band"].astype(str)
+            fig = px.bar(timing_summary, x="minute_band", y="corners")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No timing data available.")
+
+    st.subheader("League Team Table")
+    if not league_team_summary.empty:
+        st.dataframe(
+            league_team_summary.sort_values("corners_per_match", ascending=False).reset_index(drop=True),
+            use_container_width=True,
+            height=420,
+        )
+
+with tab2:
     col_a, col_b = st.columns(2)
 
     with col_a:
@@ -258,7 +368,7 @@ with tab1:
     else:
         st.info("No event data available.")
 
-with tab2:
+with tab3:
     st.subheader("Team Summary")
     st.dataframe(
         team_df.sort_values("corners_taken", ascending=False).reset_index(drop=True),
@@ -266,7 +376,7 @@ with tab2:
         height=500,
     )
 
-with tab3:
+with tab4:
     st.subheader("Match Summary")
     show_cols = [
         c for c in [
@@ -287,7 +397,7 @@ with tab3:
         height=500,
     )
 
-with tab4:
+with tab5:
     st.subheader("Raw Event Data")
     st.dataframe(
         event_df.reset_index(drop=True),
