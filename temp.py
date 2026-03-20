@@ -4,11 +4,14 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-st.set_page_config(page_title="Corners App", layout="wide")
+st.set_page_config(page_title="Allsvenskan Corners Studio", layout="wide")
 
 FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
 def safe_numeric(series):
     return pd.to_numeric(series, errors="coerce")
 
@@ -100,6 +103,9 @@ def prepare_data(df):
     df["corner_team"] = df["corner_team"].astype(str).str.strip()
     df["event_minute"] = df["Minute"].fillna(0) + df["Second"].fillna(0) / 60.0
     df["led_to_shot"] = df["SP_outcome"].astype(str).str.contains("shot", case=False, na=False)
+    df["is_first_contact_shot"] = df["SP_outcome"].astype(str).str.contains(
+        "first contact", case=False, na=False
+    )
 
     homes = []
     aways = []
@@ -116,6 +122,7 @@ def prepare_data(df):
         .agg(
             total_corners=("match_id", "size"),
             shots_from_corners=("led_to_shot", "sum"),
+            first_contact_shots=("is_first_contact_shot", "sum"),
             total_xg=("shot_xg", "sum"),
             avg_xg=("shot_xg", "mean"),
         )
@@ -133,6 +140,11 @@ def prepare_data(df):
     match_summary["away_corners"] = match_summary.apply(
         lambda r: count_team_corners(r["match_id"], r["away_team"]), axis=1
     )
+    match_summary["corners_per_shot"] = np.where(
+        match_summary["shots_from_corners"] > 0,
+        match_summary["total_corners"] / match_summary["shots_from_corners"],
+        np.nan,
+    )
 
     team_summary = (
         df.groupby("corner_team", dropna=False)
@@ -140,6 +152,7 @@ def prepare_data(df):
             corners_taken=("match_id", "size"),
             matches=("match_id", pd.Series.nunique),
             shots_from_corners=("led_to_shot", "sum"),
+            first_contact_shots=("is_first_contact_shot", "sum"),
             total_xg=("shot_xg", "sum"),
             avg_xg_per_corner=("shot_xg", "mean"),
         )
@@ -153,16 +166,67 @@ def prepare_data(df):
     team_summary["shot_rate"] = (
         team_summary["shots_from_corners"] / team_summary["corners_taken"].replace(0, np.nan)
     )
-
     team_summary["xg_per_match"] = (
         team_summary["total_xg"] / team_summary["matches"].replace(0, np.nan)
+    )
+    team_summary["first_contact_rate"] = (
+        team_summary["first_contact_shots"] / team_summary["corners_taken"].replace(0, np.nan)
     )
 
     return df, match_summary, team_summary
 
 
-st.title("⚽ Allsvenskan Corners Dashboard")
-st.caption("Reads data directly from Allsvenskan - Corners 2025.xlsx")
+def metric_row(event_df, match_df, title_prefix=""):
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    corners = len(event_df)
+    matches = event_df["match_id"].nunique() if not event_df.empty else 0
+    avg_corners = match_df["total_corners"].mean() if not match_df.empty else 0
+    shot_outcomes = int(event_df["led_to_shot"].sum()) if not event_df.empty else 0
+    total_xg = event_df["shot_xg"].fillna(0).sum() if "shot_xg" in event_df.columns and not event_df.empty else 0
+
+    c1.metric(f"{title_prefix}Corner Events", f"{corners}")
+    c2.metric(f"{title_prefix}Matches", f"{matches}")
+    c3.metric(f"{title_prefix}Avg Corners/Match", f"{avg_corners:.2f}")
+    c4.metric(f"{title_prefix}Shot Outcomes", f"{shot_outcomes}")
+    c5.metric(f"{title_prefix}Total xG", f"{total_xg:.2f}")
+
+
+def build_league_team_summary(source_df):
+    league_team_summary = (
+        source_df.groupby("corner_team", dropna=False)
+        .agg(
+            corners_taken=("match_id", "size"),
+            matches=("match_id", pd.Series.nunique),
+            shots_from_corners=("led_to_shot", "sum"),
+            first_contact_shots=("is_first_contact_shot", "sum"),
+            total_xg=("shot_xg", "sum"),
+            avg_xg_per_corner=("shot_xg", "mean"),
+        )
+        .reset_index()
+        .rename(columns={"corner_team": "team"})
+    )
+
+    league_team_summary["corners_per_match"] = (
+        league_team_summary["corners_taken"] / league_team_summary["matches"].replace(0, np.nan)
+    )
+    league_team_summary["shot_rate"] = (
+        league_team_summary["shots_from_corners"] / league_team_summary["corners_taken"].replace(0, np.nan)
+    )
+    league_team_summary["xg_per_match"] = (
+        league_team_summary["total_xg"] / league_team_summary["matches"].replace(0, np.nan)
+    )
+    league_team_summary["first_contact_rate"] = (
+        league_team_summary["first_contact_shots"] / league_team_summary["corners_taken"].replace(0, np.nan)
+    )
+    return league_team_summary
+
+
+# -----------------------------
+# Load
+# -----------------------------
+st.title("⚽ Allsvenskan Corners Studio")
+st.caption("American-style soccer analysis dashboard")
 
 try:
     raw_df = load_data()
@@ -180,8 +244,18 @@ except Exception as e:
     st.write(list(raw_df.columns))
     st.stop()
 
+
+# -----------------------------
+# Sidebar menu
+# -----------------------------
+st.sidebar.title("Menu")
+page = st.sidebar.radio(
+    "Go to",
+    ["League Overview", "Team Analysis", "Match Explorer", "Data Center"],
+)
+
 teams = sorted([t for t in team_summary["team"].dropna().unique().tolist() if str(t).strip()])
-selected_team = st.sidebar.selectbox("Team", ["All Teams"] + teams)
+selected_team = st.sidebar.selectbox("Team Filter", ["All Teams"] + teams)
 
 if len(match_summary) > 0:
     min_c = int(match_summary["total_corners"].min())
@@ -190,20 +264,27 @@ else:
     min_c, max_c = 0, 0
 
 corner_range = st.sidebar.slider(
-    "Match total corners",
+    "Match Total Corners",
     min_value=min_c,
     max_value=max_c,
     value=(min_c, max_c),
 )
 
+st.sidebar.markdown("---")
+st.sidebar.caption("Dashboard style: American soccer analysis")
+
+
+# -----------------------------
+# Common filtered frames
+# -----------------------------
 event_df = df.copy()
 match_df = match_summary.copy()
 team_df = team_summary.copy()
 
 if selected_team != "All Teams":
     event_df = event_df[event_df["corner_team"] == selected_team]
-    valid_match_ids = event_df["match_id"].unique()
-    match_df = match_df[match_df["match_id"].isin(valid_match_ids)]
+    selected_match_ids = event_df["match_id"].unique()
+    match_df = match_df[match_df["match_id"].isin(selected_match_ids)]
     team_df = team_df[team_df["team"] == selected_team]
 
 match_df = match_df[
@@ -211,10 +292,9 @@ match_df = match_df[
     (match_df["total_corners"] <= corner_range[1])
 ]
 
-valid_match_ids = match_df["match_id"].unique()
-event_df = event_df[event_df["match_id"].isin(valid_match_ids)]
+filtered_match_ids = match_df["match_id"].unique()
+event_df = event_df[event_df["match_id"].isin(filtered_match_ids)]
 
-# league-wide tables should ignore the team filter but respect the corner range
 league_match_df = match_summary[
     (match_summary["total_corners"] >= corner_range[0]) &
     (match_summary["total_corners"] <= corner_range[1])
@@ -222,185 +302,360 @@ league_match_df = match_summary[
 
 league_match_ids = league_match_df["match_id"].unique()
 league_event_df = df[df["match_id"].isin(league_match_ids)].copy()
+league_team_df = build_league_team_summary(league_event_df)
 
-league_team_summary = (
-    league_event_df.groupby("corner_team", dropna=False)
-    .agg(
-        corners_taken=("match_id", "size"),
-        matches=("match_id", pd.Series.nunique),
-        shots_from_corners=("led_to_shot", "sum"),
-        total_xg=("shot_xg", "sum"),
-        avg_xg_per_corner=("shot_xg", "mean"),
-    )
-    .reset_index()
-    .rename(columns={"corner_team": "team"})
-)
 
-league_team_summary["corners_per_match"] = (
-    league_team_summary["corners_taken"] / league_team_summary["matches"].replace(0, np.nan)
-)
-league_team_summary["shot_rate"] = (
-    league_team_summary["shots_from_corners"] / league_team_summary["corners_taken"].replace(0, np.nan)
-)
-league_team_summary["xg_per_match"] = (
-    league_team_summary["total_xg"] / league_team_summary["matches"].replace(0, np.nan)
-)
+# -----------------------------
+# Page: League Overview
+# -----------------------------
+if page == "League Overview":
+    top_tabs = st.tabs(["Snapshot", "Team Rankings", "League Trends"])
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Corner Events", len(event_df))
-c2.metric("Matches", event_df["match_id"].nunique())
-c3.metric("Teams", event_df["corner_team"].nunique())
-c4.metric("Shot Outcomes", int(event_df["led_to_shot"].sum()))
+    with top_tabs[0]:
+        st.subheader("League Snapshot")
+        metric_row(league_event_df, league_match_df, "")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["League Overview", "Overview", "Teams", "Matches", "Raw Data"]
-)
+        a, b = st.columns(2)
 
-with tab1:
-    st.subheader("League Overview")
+        with a:
+            st.subheader("Corners per Team")
+            if not league_team_df.empty:
+                fig = px.bar(
+                    league_team_df.sort_values("corners_taken", ascending=False),
+                    x="team",
+                    y="corners_taken",
+                    hover_data=["matches", "corners_per_match", "shots_from_corners", "shot_rate", "total_xg"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No data available.")
 
-    lc1, lc2, lc3, lc4 = st.columns(4)
-    lc1.metric("League Matches", int(league_match_df["match_id"].nunique()))
-    lc2.metric("League Corner Events", int(len(league_event_df)))
-    lc3.metric("Avg Corners / Match", f"{league_match_df['total_corners'].mean():.2f}" if not league_match_df.empty else "0.00")
-    lc4.metric("Avg xG / Match", f"{league_match_df['total_xg'].mean():.2f}" if not league_match_df.empty else "0.00")
+        with b:
+            st.subheader("Average Corners per Match")
+            if not league_team_df.empty:
+                fig = px.bar(
+                    league_team_df.sort_values("corners_per_match", ascending=False),
+                    x="team",
+                    y="corners_per_match",
+                    hover_data=["corners_taken", "matches", "shot_rate", "xg_per_match"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No data available.")
 
-    col_a, col_b = st.columns(2)
+    with top_tabs[1]:
+        st.subheader("Team Rankings")
 
-    with col_a:
-        st.subheader("Corners per Team (League)")
-        if not league_team_summary.empty:
-            fig = px.bar(
-                league_team_summary.sort_values("corners_taken", ascending=False),
-                x="team",
-                y="corners_taken",
-                hover_data=["matches", "corners_per_match", "shots_from_corners", "shot_rate", "total_xg", "xg_per_match"],
+        rank_tabs = st.tabs(["Volume", "Efficiency", "Chance Creation"])
+
+        with rank_tabs[0]:
+            st.dataframe(
+                league_team_df.sort_values("corners_taken", ascending=False).reset_index(drop=True),
+                use_container_width=True,
+                height=520,
             )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No league data available.")
 
-    with col_b:
-        st.subheader("Average Corners per Match by Team")
-        if not league_team_summary.empty:
-            fig = px.bar(
-                league_team_summary.sort_values("corners_per_match", ascending=False),
-                x="team",
-                y="corners_per_match",
-                hover_data=["corners_taken", "matches", "shots_from_corners", "shot_rate"],
+        with rank_tabs[1]:
+            efficiency_table = league_team_df.copy()
+            efficiency_table = efficiency_table.sort_values(
+                ["shot_rate", "first_contact_rate"], ascending=False
             )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No league data available.")
-
-    col_c, col_d = st.columns(2)
-
-    with col_c:
-        st.subheader("League Match Total Corners Distribution")
-        if not league_match_df.empty:
-            fig = px.histogram(
-                league_match_df,
-                x="total_corners",
-                nbins=min(20, max(5, len(league_match_df)))
+            st.dataframe(
+                efficiency_table.reset_index(drop=True),
+                use_container_width=True,
+                height=520,
             )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No league match data available.")
 
-    with col_d:
-        st.subheader("League Corner Timing")
-        if not league_event_df.empty:
-            timing = league_event_df.copy()
-            bins = list(range(0, 101, 5))
-            timing["minute_band"] = pd.cut(timing["event_minute"], bins=bins, right=False)
-            timing_summary = timing.groupby("minute_band", observed=False).size().reset_index(name="corners")
-            timing_summary["minute_band"] = timing_summary["minute_band"].astype(str)
-            fig = px.bar(timing_summary, x="minute_band", y="corners")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No timing data available.")
+        with rank_tabs[2]:
+            chance_table = league_team_df.copy()
+            chance_table = chance_table.sort_values(
+                ["total_xg", "xg_per_match", "avg_xg_per_corner"], ascending=False
+            )
+            st.dataframe(
+                chance_table.reset_index(drop=True),
+                use_container_width=True,
+                height=520,
+            )
 
-    st.subheader("League Team Table")
-    if not league_team_summary.empty:
+    with top_tabs[2]:
+        st.subheader("League Trends")
+
+        x, y = st.columns(2)
+
+        with x:
+            st.subheader("Match Total Corners Distribution")
+            if not league_match_df.empty:
+                fig = px.histogram(
+                    league_match_df,
+                    x="total_corners",
+                    nbins=min(20, max(5, len(league_match_df))),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No data available.")
+
+        with y:
+            st.subheader("Corner Timing")
+            if not league_event_df.empty:
+                timing = league_event_df.copy()
+                bins = list(range(0, 101, 5))
+                timing["minute_band"] = pd.cut(timing["event_minute"], bins=bins, right=False)
+                timing_summary = timing.groupby("minute_band", observed=False).size().reset_index(name="corners")
+                timing_summary["minute_band"] = timing_summary["minute_band"].astype(str)
+                fig = px.bar(timing_summary, x="minute_band", y="corners")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No timing data available.")
+
+        st.subheader("League Match Board")
+        board_cols = [
+            c for c in [
+                "Match",
+                "home_team",
+                "away_team",
+                "home_corners",
+                "away_corners",
+                "total_corners",
+                "shots_from_corners",
+                "first_contact_shots",
+                "total_xg",
+                "avg_xg",
+            ] if c in league_match_df.columns
+        ]
         st.dataframe(
-            league_team_summary.sort_values("corners_per_match", ascending=False).reset_index(drop=True),
+            league_match_df[board_cols]
+            .sort_values(["total_corners", "shots_from_corners"], ascending=False)
+            .reset_index(drop=True),
             use_container_width=True,
-            height=420,
+            height=500,
         )
 
-with tab2:
-    col_a, col_b = st.columns(2)
 
-    with col_a:
-        st.subheader("Corners by Team")
-        if not team_df.empty:
-            fig = px.bar(
-                team_df.sort_values("corners_taken", ascending=False),
-                x="team",
-                y="corners_taken",
-                hover_data=["matches", "corners_per_match", "shots_from_corners", "shot_rate", "total_xg"],
+# -----------------------------
+# Page: Team Analysis
+# -----------------------------
+elif page == "Team Analysis":
+    team_tabs = st.tabs(["Team Snapshot", "Production Profile", "Event Log"])
+
+    with team_tabs[0]:
+        title = selected_team if selected_team != "All Teams" else "All Teams"
+        st.subheader(f"Team Snapshot — {title}")
+        metric_row(event_df, match_df, "")
+
+        left, right = st.columns(2)
+
+        with left:
+            st.subheader("Team Corner Volume")
+            if not team_df.empty:
+                fig = px.bar(
+                    team_df.sort_values("corners_taken", ascending=False),
+                    x="team",
+                    y="corners_taken",
+                    hover_data=["matches", "corners_per_match", "shots_from_corners", "shot_rate", "total_xg"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No team data available.")
+
+        with right:
+            st.subheader("Shot Outcomes from Corners")
+            if not team_df.empty:
+                fig = px.bar(
+                    team_df.sort_values("shots_from_corners", ascending=False),
+                    x="team",
+                    y="shots_from_corners",
+                    hover_data=["corners_taken", "shot_rate", "first_contact_shots", "first_contact_rate"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No team data available.")
+
+    with team_tabs[1]:
+        st.subheader("Production Profile")
+
+        left, right = st.columns(2)
+
+        with left:
+            if not team_df.empty:
+                fig = px.scatter(
+                    team_df,
+                    x="corners_per_match",
+                    y="shot_rate",
+                    size="corners_taken",
+                    hover_name="team",
+                    hover_data=["matches", "total_xg", "xg_per_match"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No production profile available.")
+
+        with right:
+            if not team_df.empty:
+                fig = px.scatter(
+                    team_df,
+                    x="corners_per_match",
+                    y="xg_per_match",
+                    size="shots_from_corners",
+                    hover_name="team",
+                    hover_data=["shot_rate", "avg_xg_per_corner", "first_contact_rate"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No production profile available.")
+
+        st.subheader("Team Table")
+        st.dataframe(
+            team_df.sort_values(
+                ["corners_taken", "shots_from_corners", "total_xg"], ascending=False
+            ).reset_index(drop=True),
+            use_container_width=True,
+            height=500,
+        )
+
+    with team_tabs[2]:
+        st.subheader("Event Log")
+        show_cols = [
+            c for c in [
+                "match_id",
+                "Match",
+                "corner_team",
+                "Minute",
+                "Second",
+                "SP_outcome",
+                "shot_xg",
+                "home_team",
+                "away_team",
+            ] if c in event_df.columns
+        ]
+        st.dataframe(
+            event_df[show_cols].sort_values(["match_id", "Minute", "Second"]).reset_index(drop=True),
+            use_container_width=True,
+            height=550,
+        )
+
+
+# -----------------------------
+# Page: Match Explorer
+# -----------------------------
+elif page == "Match Explorer":
+    available_matches = sorted(match_df["Match"].dropna().unique().tolist()) if not match_df.empty else []
+    selected_match = st.selectbox("Select Match", ["All Matches"] + available_matches)
+
+    match_tabs = st.tabs(["Match Board", "Timeline", "Corner Breakdown"])
+
+    match_event_df = event_df.copy()
+    match_board_df = match_df.copy()
+
+    if selected_match != "All Matches":
+        match_board_df = match_board_df[match_board_df["Match"] == selected_match]
+        selected_ids = match_board_df["match_id"].unique()
+        match_event_df = match_event_df[match_event_df["match_id"].isin(selected_ids)]
+
+    with match_tabs[0]:
+        st.subheader("Match Board")
+        metric_row(match_event_df, match_board_df, "")
+
+        board_cols = [
+            c for c in [
+                "Match",
+                "home_team",
+                "away_team",
+                "home_corners",
+                "away_corners",
+                "total_corners",
+                "shots_from_corners",
+                "first_contact_shots",
+                "total_xg",
+                "avg_xg",
+            ] if c in match_board_df.columns
+        ]
+
+        st.dataframe(
+            match_board_df[board_cols]
+            .sort_values(["total_corners", "shots_from_corners"], ascending=False)
+            .reset_index(drop=True),
+            use_container_width=True,
+            height=500,
+        )
+
+    with match_tabs[1]:
+        st.subheader("Timeline")
+        if not match_event_df.empty:
+            timing = (
+                match_event_df.groupby(["Minute"], dropna=False)
+                .size()
+                .reset_index(name="corner_events")
+                .sort_values("Minute")
             )
+            fig = px.bar(timing, x="Minute", y="corner_events")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data for current filters.")
+            st.info("No timeline data available.")
 
-    with col_b:
-        st.subheader("Match Total Corners")
-        if not match_df.empty:
-            fig = px.histogram(
-                match_df,
-                x="total_corners",
-                nbins=min(20, max(5, len(match_df)))
+    with match_tabs[2]:
+        st.subheader("Corner Breakdown")
+        if not match_event_df.empty:
+            left, right = st.columns(2)
+
+            with left:
+                by_team = (
+                    match_event_df.groupby("corner_team", dropna=False)
+                    .agg(
+                        corners=("match_id", "size"),
+                        shots=("led_to_shot", "sum"),
+                        total_xg=("shot_xg", "sum"),
+                    )
+                    .reset_index()
+                )
+                fig = px.bar(by_team, x="corner_team", y="corners", hover_data=["shots", "total_xg"])
+                st.plotly_chart(fig, use_container_width=True)
+
+            with right:
+                outcome_summary = (
+                    match_event_df.groupby("SP_outcome", dropna=False)
+                    .size()
+                    .reset_index(name="events")
+                    .sort_values("events", ascending=False)
+                    .head(15)
+                )
+                fig = px.bar(outcome_summary, x="SP_outcome", y="events")
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.dataframe(
+                match_event_df.sort_values(["Minute", "Second"]).reset_index(drop=True),
+                use_container_width=True,
+                height=420,
             )
-            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data for current filters.")
+            st.info("No match event data available.")
 
-    st.subheader("Corner Timing")
-    if not event_df.empty:
-        timing = event_df.copy()
-        bins = list(range(0, 101, 5))
-        timing["minute_band"] = pd.cut(timing["event_minute"], bins=bins, right=False)
-        timing_summary = timing.groupby("minute_band", observed=False).size().reset_index(name="corners")
-        timing_summary["minute_band"] = timing_summary["minute_band"].astype(str)
-        fig = px.bar(timing_summary, x="minute_band", y="corners")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No event data available.")
 
-with tab3:
-    st.subheader("Team Summary")
-    st.dataframe(
-        team_df.sort_values("corners_taken", ascending=False).reset_index(drop=True),
-        use_container_width=True,
-        height=500,
-    )
+# -----------------------------
+# Page: Data Center
+# -----------------------------
+elif page == "Data Center":
+    data_tabs = st.tabs(["Raw Events", "Team Table", "Match Table"])
 
-with tab4:
-    st.subheader("Match Summary")
-    show_cols = [
-        c for c in [
-            "Match",
-            "home_team",
-            "away_team",
-            "home_corners",
-            "away_corners",
-            "total_corners",
-            "shots_from_corners",
-            "total_xg",
-            "avg_xg",
-        ] if c in match_df.columns
-    ]
-    st.dataframe(
-        match_df[show_cols].sort_values("total_corners", ascending=False).reset_index(drop=True),
-        use_container_width=True,
-        height=500,
-    )
+    with data_tabs[0]:
+        st.subheader("Raw Event Data")
+        st.dataframe(
+            event_df.reset_index(drop=True),
+            use_container_width=True,
+            height=600,
+        )
 
-with tab5:
-    st.subheader("Raw Event Data")
-    st.dataframe(
-        event_df.reset_index(drop=True),
-        use_container_width=True,
-        height=500,
-    )
+    with data_tabs[1]:
+        st.subheader("Team Table")
+        st.dataframe(
+            team_df.sort_values("corners_taken", ascending=False).reset_index(drop=True),
+            use_container_width=True,
+            height=600,
+        )
+
+    with data_tabs[2]:
+        st.subheader("Match Table")
+        st.dataframe(
+            match_df.sort_values("total_corners", ascending=False).reset_index(drop=True),
+            use_container_width=True,
+            height=600,
+        )
