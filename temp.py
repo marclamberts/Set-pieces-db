@@ -239,9 +239,6 @@ def human_pct(v, decimals=1):
 def human_val(v, decimals=2):
     return "—" if pd.isna(v) else f"{v:.{decimals}f}"
 
-def fmt_int(v):
-    return "—" if pd.isna(v) else f"{int(v):,}"
-
 def find_col(df, candidates):
     lower_map = {str(c).strip().lower(): c for c in df.columns}
     for cand in candidates:
@@ -340,6 +337,12 @@ def percentile_rank(series, value):
     if len(s) == 0 or pd.isna(value):
         return np.nan
     return float((s <= value).mean() * 100)
+
+def safe_range_slider(label, min_val, max_val):
+    if min_val < max_val:
+        return st.slider(label, min_val, max_val, (min_val, max_val))
+    st.caption(f"{label}: {min_val}")
+    return (min_val, max_val)
 
 # =========================================================
 # UI HELPERS
@@ -877,7 +880,7 @@ def rolling_shot_rate(df, window=5, title="Rolling Shot Rate"):
 # =========================================================
 # EXPORTS
 # =========================================================
-def download_excel_workbook(events_df, team_df, match_df, taker_df, file_name="allsvenskan_corners.xlsx"):
+def download_excel_workbook(events_df, team_df, match_df, taker_df):
     buf = BytesIO()
     try:
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -954,12 +957,12 @@ with st.sidebar:
     sel_matches = st.multiselect("Matches", all_matches)
 
     minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
-    minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 120
-    min_range = st.slider("Minute Range", minute_min, minute_max, (minute_min, minute_max))
+    minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
+    min_range = safe_range_slider("Minute Range", minute_min, minute_max)
 
     match_corner_min = int(match_summary["total_corners"].min()) if not match_summary.empty else 0
-    match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 20
-    corner_range = st.slider("Match Corner Range", match_corner_min, match_corner_max, (match_corner_min, match_corner_max))
+    match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 0
+    corner_range = safe_range_slider("Match Corner Range", match_corner_min, match_corner_max)
 
     st.markdown("**Delivery Filters**")
     side_filter = st.multiselect("Side", ["Right", "Left", "Unknown"], default=["Right", "Left", "Unknown"])
@@ -1030,7 +1033,7 @@ league_event_df, league_match_df, league_team_df, league_taker_df = apply_filter
 # =========================================================
 # KPI ROW
 # =========================================================
-def render_kpis(events, matches):
+def render_kpis(events):
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     total_xg = events["shot_xg"].fillna(0).sum() if not events.empty else 0
     shot_rate = events["led_to_shot"].mean() if not events.empty else 0
@@ -1053,7 +1056,7 @@ def render_kpis(events, matches):
 # PAGES
 # =========================================================
 if page == "🏠 Executive Dashboard":
-    render_kpis(league_event_df, league_match_df)
+    render_kpis(league_event_df)
     st.markdown("<br>", unsafe_allow_html=True)
 
     insights = top_insights(league_team_df)
@@ -1167,7 +1170,7 @@ elif page == "🏟 Team Analysis":
         team_row = league_team_df[league_team_df["team"] == sel_team]
         team_takers = taker_summary(team_ev)
 
-        render_kpis(team_ev, team_m)
+        render_kpis(team_ev)
 
         tabs = st.tabs(["📊 Overview", "🎯 Visuals", "👤 Takers", "📋 Matches", "🏆 Report Card"])
 
@@ -1273,7 +1276,7 @@ elif page == "🔍 Match Explorer":
         match_m = match_m[match_m["Match"] == sel_match]
         match_ev = match_ev[match_ev["match_id"].isin(match_m["match_id"].unique())]
 
-    render_kpis(match_ev, match_m)
+    render_kpis(match_ev)
 
     tabs = st.tabs(["📋 Summary", "⏱ Timeline", "🎯 Shotmap", "🏹 Delivery", "🔴 Event Feed"])
 
