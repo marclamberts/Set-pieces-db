@@ -1034,7 +1034,6 @@ def render_kpis(events, matches):
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     total_xg = events["shot_xg"].fillna(0).sum() if not events.empty else 0
     shot_rate = events["led_to_shot"].mean() if not events.empty else 0
-    fast_rate = events["is_fast_shot"].mean() if not events.empty else 0
     goals = int(events["goal_from_corner"].sum()) if not events.empty else 0
 
     with c1:
@@ -1237,14 +1236,6 @@ elif page == "🏟 Team Analysis":
                 empty_state()
             else:
                 row = team_row.iloc[0]
-                metrics = [
-                    ("Corners/Match", row.get("corners_per_match")),
-                    ("Shot Rate", row.get("shot_rate")),
-                    ("xG/Match", row.get("xg_per_match")),
-                    ("6Y Delivery Rate", row.get("six_yard_delivery_rate")),
-                    ("Short Corner Rate", row.get("short_corner_rate")),
-                    ("Inswinger Rate", row.get("inswinger_rate")),
-                ]
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     metric_card("Corners/Match", human_val(row.get("corners_per_match")), "Volume")
@@ -1254,20 +1245,22 @@ elif page == "🏟 Team Analysis":
                     metric_card("xG/Match", human_val(row.get("xg_per_match"), 3), "Chance quality")
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                for label, val in metrics:
-                    pct = percentile_rank(league_team_df[[m for m in league_team_df.columns if m]].get(
-                        {
-                            "Corners/Match": "corners_per_match",
-                            "Shot Rate": "shot_rate",
-                            "xG/Match": "xg_per_match",
-                            "6Y Delivery Rate": "six_yard_delivery_rate",
-                            "Short Corner Rate": "short_corner_rate",
-                            "Inswinger Rate": "inswinger_rate",
-                        }[label],
-                        pd.Series(dtype=float)
-                    ), val)
+                metric_map = [
+                    ("Corners/Match", "corners_per_match"),
+                    ("Shot Rate", "shot_rate"),
+                    ("xG/Match", "xg_per_match"),
+                    ("6Y Delivery Rate", "six_yard_delivery_rate"),
+                    ("Short Corner Rate", "short_corner_rate"),
+                    ("Inswinger Rate", "inswinger_rate"),
+                ]
+                for label, col in metric_map:
+                    val = row.get(col)
+                    pct = percentile_rank(league_team_df[col], val) if col in league_team_df.columns else np.nan
                     display = human_pct(val) if "Rate" in label else human_val(val, 3)
-                    st.markdown(f"**{label}**: {display} · {pct:.0f}th percentile" if not pd.isna(pct) else f"**{label}**: {display}")
+                    st.markdown(
+                        f"**{label}**: {display} · {pct:.0f}th percentile"
+                        if not pd.isna(pct) else f"**{label}**: {display}"
+                    )
 
 elif page == "🔍 Match Explorer":
     match_options = sorted(league_match_df["Match"].dropna().unique().tolist()) if not league_match_df.empty else []
@@ -1411,6 +1404,24 @@ elif page == "👤 Scouting Center":
                 dom_side = opp_ev["side"].value_counts()
                 top_taker = opp_takers.iloc[0]["Taker"] if not opp_takers.empty else "Unknown"
 
+                zone_recommendation = (
+                    "Protect the 6-yard area aggressively."
+                    if (not dom_zone.empty and dom_zone.index[0] == "6-yard box")
+                    else "Standard zonal coverage is acceptable."
+                )
+
+                short_recommendation = (
+                    " Watch for short corners."
+                    if r.get("short_corner_rate", 0) > 0.15
+                    else ""
+                )
+
+                inswing_recommendation = (
+                    " Prepare for inswinging delivery patterns."
+                    if r.get("inswinger_rate", 0) > 0.30
+                    else ""
+                )
+
                 st.markdown(
                     f"""
                     <div class="insight-box">
@@ -1423,9 +1434,7 @@ elif page == "👤 Scouting Center":
                             <b>Preferred side:</b> {dom_side.index[0] if not dom_side.empty else 'Unknown'}<br>
                             <b>Primary taker:</b> {top_taker}<br><br>
                             <b>Recommendations:</b>
-                            {'Protect the 6-yard area aggressively.' if dom_zone.index[0] == '6-yard box' if not dom_zone.empty else False else 'Standard zonal coverage is acceptable.'}
-                            {' Watch for short corners.' if r.get('short_corner_rate', 0) > 0.15 else ''}
-                            {' Prepare for inswinging delivery patterns.' if r.get('inswinger_rate', 0) > 0.30 else ''}
+                            {zone_recommendation}{short_recommendation}{inswing_recommendation}
                         </div>
                     </div>
                     """,
