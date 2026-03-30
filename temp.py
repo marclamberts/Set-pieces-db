@@ -728,7 +728,7 @@ def taker_summary(df):
 # CHARTS
 # =========================================================
 def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True, side_focus="Both"):
-    fig = draw_pitch(go.Figure(), title=title, height=560, half=half)
+    fig = draw_pitch(go.Figure(), title=title, height=600, half=half)
     if df_shots.empty:
         return annotate_side(fig, side_focus)
 
@@ -742,8 +742,8 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
     for group, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(
             go.Scatter(
-                x=sub["shot_location_x"],
-                y=sub["shot_location_y"],
+                x=80 - sub["shot_location_y"], # Swapped and flipped for orientation
+                y=sub["shot_location_x"],      # X is now height
                 mode="markers",
                 name=str(group),
                 marker=dict(
@@ -755,10 +755,7 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
                     f"<b>{r.get('Match','')}</b><br>"
                     f"Team: {r.get('corner_team','')}<br>"
                     f"Side: {r.get('side','')}<br>"
-                    f"Taker: {r.get('Taker','')}<br>"
-                    f"Shooter: {r.get('Shooter','')}<br>"
-                    f"xG: {0 if pd.isna(r.get('shot_xg')) else r.get('shot_xg', 0):.3f}<br>"
-                    f"Minute: {int(r.get('Minute', 0)) if pd.notna(r.get('Minute')) else ''}"
+                    f"xG: {r.get('shot_xg', 0):.3f}"
                     for _, r in sub.iterrows()
                 ],
                 hovertemplate="%{text}<extra></extra>",
@@ -767,7 +764,7 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
     return annotate_side(fig, side_focus)
 
 def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
-    fig = draw_pitch(go.Figure(), title=title, height=620, half=False)
+    fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     plot = df_events.dropna(
         subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
     ).copy()
@@ -779,30 +776,19 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
     for _, row in plot.iterrows():
         category = str(row.get(color_col, "Unknown"))
         show = category not in legend_added
-        if show:
-            legend_added.add(category)
+        if show: legend_added.add(category)
 
         fig.add_trace(
             go.Scatter(
-                x=[row["pass_location_x"], row["pass_end_location_x"]],
-                y=[row["pass_location_y"], row["pass_end_location_y"]],
+                x=[80 - row["pass_location_y"], 80 - row["pass_end_location_y"]],
+                y=[row["pass_location_x"], row["pass_end_location_x"]],
                 mode="lines+markers",
                 name=category,
                 showlegend=show,
                 legendgroup=category,
                 line=dict(width=2),
                 marker=dict(size=[5, 8]),
-                text=(
-                    f"<b>{row.get('Match','')}</b><br>"
-                    f"Team: {row.get('corner_team','')}<br>"
-                    f"Side: {row.get('side','')}<br>"
-                    f"Taker: {row.get('Taker','')}<br>"
-                    f"Technique: {row.get('pass_technique','')}<br>"
-                    f"Zone: {row.get('delivery_zone','')}<br>"
-                    f"End Zone: {row.get('end_zone','')}<br>"
-                    f"Outcome: {row.get('SP_outcome','')}"
-                ),
-                hovertemplate="%{text}<extra></extra>",
+                hovertemplate=f"Taker: {row.get('Taker','')}<br>Outcome: {row.get('SP_outcome','')}<extra></extra>"
             )
         )
     return annotate_side(fig, side_focus)
