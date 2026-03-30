@@ -189,84 +189,72 @@ st.markdown(CSS, unsafe_allow_html=True)
 import plotly.graph_objects as go
 import numpy as np
 
-# Helper to find columns dynamically to prevent KeyErrors
-def get_col(df, options, default=None):
-    for opt in options:
-        if opt in df.columns:
-            return opt
-    return default
-
-# 1. THE VERTICAL PITCH
+# 1. VERTICAL PITCH HELPER
 def draw_pitch(fig, title=None, height=700, half=False):
-    # Vertical orientation: X is width (0-80), Y is length (0-120)
+    # Vertical setup: X-axis is width (0-80), Y-axis is length (0-120)
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
+    
     fig.update_layout(
         title=title, height=height, template="plotly_dark",
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         margin=dict(l=10, r=10, t=40, b=10),
         shapes=[
-            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
-            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
-            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)), # Boundary
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)), # Halfway
+            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)), # Box
+            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)), # 6-yard
         ],
     )
     return fig
 
-# 2. THE SHOTMAP (Vertical, Fixed Signature)
+# 2. SHOTMAP: Vertical + xG + Shooter
 def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: return fig
-    
-    # Safe column finding for xG and Team
-    team_col = get_col(df_shots, [color_col, "pass_team_name", "corner_team"], "Team")
-    xg_col = get_col(df_shots, ["shot.statsbomb_xg", "shot_xg"], None)
 
     plot = df_shots.copy()
-    if xg_col:
-        plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 30)
-    else:
-        plot["_size"] = 15
+    xg_col = "shot.statsbomb_xg"
+    
+    # Sizing based on xG
+    plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 35)
 
-    for group, sub in plot.groupby(team_col, dropna=False):
+    for group, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], 
-            y=sub["shot_location_x"],
+            x=80 - sub["shot_location_y"], # Map width to horizontal screen
+            y=sub["shot_location_x"],      # Map length to vertical screen
             mode="markers",
             name=str(group),
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
-                f"<b>xG:</b> {r.get(xg_col, 0):.3f}" if xg_col else ""
+                f"<b>Player:</b> {r.get('Shooter', 'Unknown')}<br>"
+                f"<b>xG:</b> {r.get(xg_col, 0):.3f}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
         ))
     return fig
 
-# 3. THE DELIVERY MAP (Vertical, NO LINES, End Location only, Outcome label)
+# 3. DELIVERY MAP: Vertical + No Lines + SP_outcome
 def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Use only pass end locations
+    # Filter for landing points
     plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
     if plot.empty: return fig
 
-    # Safe team column
-    team_col = get_col(plot, [color_col, "pass_team_name", "corner_team"], "Team")
-
-    for group, sub in plot.groupby(team_col, dropna=False):
+    for group, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
-            mode="markers", # <--- THIS REMOVES THE LINES
+            mode="markers", # DOTS ONLY (No Lines)
             name=str(group),
             marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
             text=[
-                f"<b>Match:</b> {r.get('Match','')}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>" # <--- THIS ADDS THE LABEL
-                f"<b>Taker:</b> {r.get('Taker', 'N/A')}"
+                f"<b>Taker:</b> {r.get('Taker', 'Unknown')}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
+                f"<b>Match:</b> {r.get('Match', '')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
