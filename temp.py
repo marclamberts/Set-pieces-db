@@ -216,72 +216,46 @@ def draw_pitch(fig, title=None, height=600, half=True):
     )
     return fig
 
-def shotmap_figure(df_shots, title="Shotmap", side_focus="Both", color_col="pass_team_name"):
-    """
-    Robust Shotmap that handles different column naming styles automatically.
-    """
-    # 1. Start with the pitch
+def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
-    if df_shots.empty: 
+    if df_shots.empty:
         return fig
 
-    # 2. Normalize columns to be robust against KeyError
-    # This turns 'shot.statsbomb_xg' into 'shot_statsbomb_xg'
     df_clean = df_shots.copy()
     df_clean.columns = [c.replace('.', '_').replace(' ', '_').lower().strip() for c in df_clean.columns]
-    
-    # 3. Find the normalized column names
-    # Mapping our logical needs to whatever the CSV actually has
-    xg_key = 'shot_statsbomb_xg'
+
+    xg_key = 'shot_xg'        # already renamed in prepare_data
     x_key = 'shot_location_x'
     y_key = 'shot_location_y'
     shooter_key = 'shooter'
-    team_key = color_col.lower().replace('.', '_').replace(' ', '_')
-    
-    # Check if team_key exists in normalized columns, else fallback
-    if team_key not in df_clean.columns:
-        team_key = 'pass_team_name' if 'pass_team_name' in df_clean.columns else df_clean.columns[0]
+    team_key = 'corner_team'  # always use the canonical renamed column
 
-    # 4. Clean and Filter
-    # Ensure xG is numeric and only keep shots with actual xG
-    if xg_key in df_clean.columns:
-        df_clean[xg_key] = pd.to_numeric(df_clean[xg_key], errors='coerce').fillna(0)
-        plot_df = df_clean[df_clean[xg_key] > 0].copy()
-    else:
-        # If xG column is somehow missing entirely, show nothing to avoid crash
+    if xg_key not in df_clean.columns:
         return fig
 
-    # Ensure coordinates exist
-    plot_df = plot_df.dropna(subset=[x_key, y_key])
+    df_clean[xg_key] = pd.to_numeric(df_clean[xg_key], errors='coerce').fillna(0)
+    plot_df = df_clean[df_clean[xg_key] > 0].dropna(subset=[x_key, y_key])
 
     if plot_df.empty:
         return fig
 
-    # 5. Plotting
-    for team, sub in plot_df.groupby(team_key):
-        # Size circles by xG (larger xG = larger dot)
+    for team, sub in plot_df.groupby(team_key, dropna=False):
         sizes = np.clip(sub[xg_key].values * 150 + 10, 10, 55)
-
         fig.add_trace(go.Scatter(
-            x=sub[y_key], # Width on X-axis (0-80)
-            y=sub[x_key], # Length on Y-axis (attacking at 120)
+            x=sub[y_key],
+            y=sub[x_key],
             mode="markers",
             name=str(team),
-            marker=dict(
-                size=sizes, 
-                opacity=0.75, 
-                line=dict(color="white", width=1),
-                symbol="circle"
-            ),
+            marker=dict(size=sizes, opacity=0.75, line=dict(color="white", width=1)),
             text=[
-                f"<b>Player:</b> {r.get(shooter_key, 'N/A')}<br>"
-                f"<b>xG:</b> {r.get(xg_key, 0):.3f}<br>"
-                f"<b>Outcome:</b> {r.get('sp_outcome', 'N/A')}"
-                for _, r in sub.iterrows()
+                f"<b>Player:</b> {row.get(shooter_key, 'N/A')}<br>"
+                f"<b>Team:</b> {row.get(team_key, 'N/A')}<br>"
+                f"<b>xG:</b> {row.get(xg_key, 0):.3f}"
+                for _, row in sub.iterrows()
             ],
-            hovertemplate="%{text}<extra></extra>"
+            hovertemplate="%{text}<extra></extra>",
         ))
-    return fig
+    return annotate_side(fig, side_focus)
 
 def delivery_map_figure(df_events, title="Delivery Map", side_focus="Both", color_col="pass_team_name"):
     """Fixed arguments to prevent TypeErrors. Shows dots only."""
