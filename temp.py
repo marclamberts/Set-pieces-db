@@ -186,7 +186,50 @@ div[data-testid="stDataFrame"] {{
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
+    fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
+    
+    # Use the specific xG column from your CSV
+    xg_col = "shot.statsbomb_xg"
+    plot = df_shots.copy()
+    plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 30)
 
+    for group, sub in plot.groupby(color_col):
+        fig.add_trace(go.Scatter(
+            x=80 - sub["shot_location_y"], # Vertical orientation: width is X
+            y=sub["shot_location_x"],      # Vertical orientation: length is Y
+            mode="markers",
+            name=str(group),
+            marker=dict(size=sub["_size"], opacity=0.7, line=dict(width=1, color="white")),
+            text=[
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
+                f"<b>Shooter:</b> {r.get('Shooter', 'Unknown')}<br>"
+                f"<b>xG:</b> {r.get(xg_col, 0):.2f}"
+                for _, r in sub.iterrows()
+            ],
+            hovertemplate="%{text}<extra></extra>"
+        ))
+    return fig
+
+def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
+    fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
+    
+    for group, sub in df_events.groupby(color_col):
+        fig.add_trace(go.Scatter(
+            x=80 - sub["pass_end_location_y"], 
+            y=sub["pass_end_location_x"],
+            mode="markers", # DOTS ONLY
+            name=str(group),
+            marker=dict(size=12, opacity=0.8, line=dict(width=1, color="white")),
+            text=[
+                f"<b>Match:</b> {r.get('Match','')}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
+                f"<b>Taker:</b> {r.get('Taker', 'Unknown')}"
+                for _, r in sub.iterrows()
+            ],
+            hovertemplate="%{text}<extra></extra>"
+        ))
+    return fig
 
 # =========================================================
 # LOGIN
