@@ -235,26 +235,25 @@ def shotmap_figure(df_shots, title="Shotmap"):
         ))
     return fig
 
-def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
+def delivery_map_figure(df_events, title="Delivery Landing Points"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Filter for corners with landing points
+    # Filter for corners with landing coordinates
     plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
     if plot.empty: 
         return fig
 
-    # Group by the team that took the corner
-    group_col = color_col if color_col in plot.columns else "pass_team_name"
+    team_col = next((c for c in plot.columns if "team" in c.lower()), "pass_team_name")
 
-    for team, sub in plot.groupby(group_col):
+    for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
-            mode="markers", # DOTS ONLY
-            name=str(team),
+            mode="markers", # <--- DOTS ONLY (No lines)
+            name=str(group),
             marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
             text=[
-                f"<b>Outcome:</b> {r['SP_outcome']}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
                 f"<b>Taker:</b> {r.get('Taker', 'N/A')}<br>"
                 f"<b>Match:</b> {r.get('Match', 'N/A')}"
                 for _, r in sub.iterrows()
