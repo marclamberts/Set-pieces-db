@@ -1192,22 +1192,25 @@ elif page == "📊 Visualisation Studio":
     tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
 
     with tabs[0]:
+        # Filter for shots
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
         if shot_df.empty:
-            empty_state("No shot location data.")
+            empty_state("No shot location data available.")
         else:
+            # We use 'pass_team_name' as the color_col to show which team took the corner
             st.plotly_chart(
-                shotmap_figure(shot_df, "corner_team", "Shotmap", side_focus=side_focus),
+                shotmap_figure(shot_df, color_col="pass_team_name", title="Shotmap", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[1]:
-        del_df = league_event_df.dropna(subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"])
-        if del_df.empty:
-            empty_state("No delivery coordinate data.")
+        # Filter for deliveries (using end locations)
+        delivery_df = league_event_df.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
+        if delivery_df.empty:
+            empty_state("No delivery location data available.")
         else:
             st.plotly_chart(
-                delivery_map_figure(del_df, "delivery_zone", "Delivery Map", side_focus=side_focus),
+                delivery_map_figure(delivery_df, color_col="pass_team_name", title="Delivery Landing Points", side_focus=side_focus),
                 use_container_width=True,
             )
 
