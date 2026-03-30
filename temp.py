@@ -588,7 +588,7 @@ def prepare_data(raw_df):
 
     sp = df["SP_outcome"].astype(str)
     df["led_to_shot"] = sp.str.contains("shot", case=False, na=False)
-    df["is_first_contact_shot"] = sp.str.contains("first contact", case=False, na=False)
+    df["led_to_shot"] = sp.str.contains("shot", case=False, na=False) & ~sp.str.contains("no shot", case=False, na=False)
     df["is_fast_shot"] = sp.str.contains("within 3 seconds", case=False, na=False)
     df["outcome_bucket"] = sp.apply(classify_outcome)
 
