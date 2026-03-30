@@ -206,83 +206,81 @@ import numpy as np
 import pandas as pd
 
 def draw_pitch(fig, title=None, height=600, half=False):
-    """
-    Draws a vertical pitch. 
-    If half=True, it shows only the attacking half (60-120).
-    """
-    # X is width (0-80), Y is length (0-120)
-    y_min = 60 if half else 0
+    """Draws a vertical pitch. Half=True shows the attacking end (60-120)."""
+    # X axis is width (0-80), Y axis is length (0-120)
+    y_limit = 60 if half else 0
     fig.update_xaxes(range=[0, 80], visible=False)
-    fig.update_yaxes(range=[y_min, 120], visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_yaxes(range=[y_limit, 120], visible=False, scaleanchor="x", scaleratio=1)
     
-    # Define pitch lines
+    # Pitch Markings
     shapes = [
-        # Outer boundary for the visible area
-        dict(type="rect", x0=0, y0=y_min, x1=80, y1=120, line=dict(color="white", width=2)),
-        # Penalty Area
+        # Outer boundary
+        dict(type="rect", x0=0, y0=y_limit, x1=80, y1=120, line=dict(color="white", width=2)),
+        # Penalty Area (Big box)
         dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
-        # 6-yard box
+        # 6-Yard Box (Small box)
         dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
-        # Penalty spot
-        dict(type="circle", x0=39.5, y0=107.5, x1=40.5, y1=108.5, fillcolor="white", line=dict(color="white")),
+        # Penalty Spot
+        dict(type="circle", x0=39.6, y0=107.6, x1=40.4, y1=108.4, fillcolor="white", line=dict(color="white")),
+        # Goal frame
+        dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="red", width=3)),
     ]
     
-    # Add halfway line if full pitch
     if not half:
         shapes.append(dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)))
 
     fig.update_layout(
-        title=title, 
-        height=height, 
-        template="plotly_dark",
-        paper_bgcolor="#0e1117", 
-        plot_bgcolor="#0e1117",
+        title=title, height=height, template="plotly_dark",
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         margin=dict(l=10, r=10, t=40, b=10),
         shapes=shapes,
     )
     return fig
 
 def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
-    # Force half=True for the half-pitch view
+    # Force the half-pitch view
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: 
         return fig
 
-    # Safely identify columns
-    xg_key = "shot.statsbomb_xg" if "shot.statsbomb_xg" in df_shots.columns else next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
-    team_key = color_col if color_col in df_shots.columns else next((c for c in df_shots.columns if "team" in c.lower()), df_shots.columns[0])
-    shooter_key = "Shooter" if "Shooter" in df_shots.columns else "player_name"
-    
+    # --- Robust Column Search ---
+    # Looks for 'shot.statsbomb_xg', 'shot_statsbomb_xg', or anything containing 'statsbomb_xg'
+    xg_key = next((c for c in df_shots.columns if "statsbomb_xg" in c.lower()), None)
+    # Looks for Shooter column
+    shooter_key = next((c for c in df_shots.columns if c.lower() in ["shooter", "player", "player_name"]), None)
+    # Looks for Team column
+    team_key = next((c for c in df_shots.columns if c.lower() in [color_col.lower(), "pass_team_name", "shot_team_name", "team"]), df_shots.columns[0])
+
     plot_df = df_shots.copy()
     
-    # 1. Filter for xG > 0
+    # Ensure xG is numeric
     if xg_key:
         plot_df[xg_key] = pd.to_numeric(plot_df[xg_key], errors='coerce').fillna(0)
-        plot_df = plot_df[plot_df[xg_key] > 0]
     
-    if plot_df.empty: 
-        return fig
+    # We plot all shots found in the slice (usually those are the ones with coordinates)
+    # If you want to ONLY show shots with xG > 0, uncomment the next line:
+    # plot_df = plot_df[plot_df[xg_key] > 0]
 
-    # 2. Add Markers
     for team, sub in plot_df.groupby(team_key):
-        # Scale marker size based on xG
-        sizes = np.clip(sub[xg_key].values * 100 + 10, 10, 40) if xg_key else [15]*len(sub)
-        
+        # Calculate marker sizes: larger xG = larger dot
+        raw_xg = sub[xg_key].values if xg_key else np.array([0.1]*len(sub))
+        sizes = np.clip(raw_xg * 100 + 10, 8, 45)
+
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], # Mirror Y to map to 0-80 width
-            y=sub["shot_location_x"],      # X is the length toward the goal
+            x=sub["shot_location_y"],      # X-axis is pitch width
+            y=sub["shot_location_x"],      # Y-axis is pitch length (attacking goal is at 120)
             mode="markers",
             name=str(team),
             marker=dict(
                 size=sizes, 
-                opacity=0.7, 
+                opacity=0.75, 
                 line=dict(color="white", width=1),
                 symbol="circle"
             ),
             text=[
                 f"<b>Player:</b> {r.get(shooter_key, 'N/A')}<br>"
                 f"<b>xG:</b> {r.get(xg_key, 0):.3f}<br>"
-                f"<b>Outcome:</b> {r.get('shot.outcome.name', r.get('SP_outcome', 'N/A'))}"
+                f"<b>Outcome:</b> {r.get('shot.outcome.name', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
@@ -1321,24 +1319,14 @@ elif page == "📊 Visualisation Studio":
     tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
 
     with tabs[0]:
-        # Filter rows with shot locations first
+        # Filter for valid shot coordinates
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
         if shot_df.empty:
-            st.info("No shot data available.")
+            st.info("No shot data available for this selection.")
         else:
+            # We call the figure with half=True logic built-in
             st.plotly_chart(
-                shotmap_figure(shot_df, color_col="pass_team_name", title="Shotmap (xG > 0)", side_focus=side_focus),
-                use_container_width=True,
-            )
-
-    with tabs[1]:
-        # Filter rows with delivery end locations
-        delivery_df = league_event_df.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
-        if delivery_df.empty:
-            st.info("No delivery data available.")
-        else:
-            st.plotly_chart(
-                delivery_map_figure(delivery_df, color_col="pass_team_name", title="Delivery Landing Points", side_focus=side_focus),
+                shotmap_figure(shot_df, color_col="pass_team_name", title="Attacking Shot Map", side_focus=side_focus),
                 use_container_width=True,
             )
     with tabs[2]:
