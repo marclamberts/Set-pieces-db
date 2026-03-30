@@ -764,7 +764,9 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
     return annotate_side(fig, side_focus)
 
 def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
+    # Using the Vertical Pitch (Height 700)
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
+    
     plot = df_events.dropna(
         subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
     ).copy()
@@ -776,19 +778,31 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
     for _, row in plot.iterrows():
         category = str(row.get(color_col, "Unknown"))
         show = category not in legend_added
-        if show: legend_added.add(category)
+        if show:
+            legend_added.add(category)
 
         fig.add_trace(
             go.Scatter(
-                x=[80 - row["pass_location_y"], 80 - row["pass_end_location_y"]],
-                y=[row["pass_location_x"], row["pass_end_location_x"]],
-                mode="lines+markers",
+                # Use only the end location coordinates
+                x=[80 - row["pass_end_location_y"]], 
+                y=[row["pass_end_location_x"]],      
+                mode="markers", # Removed "lines+" to hide the delivery paths
                 name=category,
                 showlegend=show,
                 legendgroup=category,
-                line=dict(width=2),
-                marker=dict(size=[5, 8]),
-                hovertemplate=f"Taker: {row.get('Taker','')}<br>Outcome: {row.get('SP_outcome','')}<extra></extra>"
+                marker=dict(
+                    size=12, 
+                    opacity=0.8,
+                    line=dict(width=1, color='white')
+                ),
+                text=(
+                    f"<b>{row.get('Match','')}</b><br>"
+                    f"Team: {row.get('corner_team','')}<br>"
+                    f"Side: {row.get('side','')}<br>"
+                    f"Taker: {row.get('Taker','')}<br>"
+                    f"Outcome: {row.get('SP_outcome','')}"
+                ),
+                hovertemplate="%{text}<extra></extra>",
             )
         )
     return annotate_side(fig, side_focus)
