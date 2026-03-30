@@ -229,7 +229,7 @@ def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
                 f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
-                f"<b>xG:</b> {r.get(xg_col, 0):.3f}"
+                f"<b>xG:</b> {r.get(xg_col):.3f}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
