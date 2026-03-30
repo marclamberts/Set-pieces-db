@@ -193,20 +193,20 @@ import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 
-def shotmap_figure(df_shots, title="Shotmap"):
-    # 1. Initialize Vertical Pitch (Goal at Y=120)
+def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
+    # Initialize Vertical Pitch (Goal at Y=120)
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: 
         return fig
 
-    # 2. Robust Column Discovery (Finds 'shot.statsbomb_xg' or 'shot_statsbomb_xg')
+    # Robust Column Discovery
     xg_col = next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
     team_col = next((c for c in df_shots.columns if "team" in c.lower()), "pass_team_name")
     
     if not xg_col:
-        return fig # Or return an empty pitch if no xG column is found
+        return fig 
 
-    # 3. FILTER: Only plot shots where xG > 0
+    # --- FILTER: Only plot shots with xG > 0 ---
     plot = df_shots.copy()
     plot[xg_col] = pd.to_numeric(plot[xg_col], errors='coerce').fillna(0)
     plot = plot[plot[xg_col] > 0]
@@ -214,14 +214,13 @@ def shotmap_figure(df_shots, title="Shotmap"):
     if plot.empty:
         return fig
 
-    # 4. Marker Sizing
+    # Marker Sizing based on xG
     plot["_size"] = np.clip(plot[xg_col] * 100 + 10, 10, 40)
 
-    # 5. Plotting
     for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], # Pitch width (80) - Y coord
-            y=sub["shot_location_x"],      # Pitch length (X coord)
+            x=80 - sub["shot_location_y"], 
+            y=sub["shot_location_x"],
             mode="markers",
             name=str(group),
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1.5)),
