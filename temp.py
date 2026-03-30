@@ -1263,8 +1263,6 @@ elif page == "📊 Visualisation Studio":
 
     tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
 
-    tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
-
     with tabs[0]:
         # Filter for rows with shot coordinates
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
