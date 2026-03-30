@@ -396,7 +396,7 @@ def figure_layout(fig, height=420, title=None):
     return fig
 
 def draw_pitch(fig, title=None, height=700, half=False):
-    # Vertical orientation: X-axis is width (0-80), Y-axis is length (0-120)
+    # Vertical setup: X-axis (Width 0-80), Y-axis (Length 0-120)
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
     
@@ -404,20 +404,21 @@ def draw_pitch(fig, title=None, height=700, half=False):
         title=title,
         height=height,
         template="plotly_dark",
-        paper_bgcolor="#0e1117", # Match your app's background
+        paper_bgcolor="#0e1117", 
         plot_bgcolor="#0e1117",
         margin=dict(l=10, r=10, t=40, b=10),
         shapes=[
-            # Outer Pitch Boundary
+            # Outer boundary
             dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
-            # Halfway Line
+            # Halfway line
             dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
-            # Penalty Area (Top)
+            # Penalty Area
             dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
-            # 6-yard Box (Top)
+            # 6-yard Box
             dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
         ],
     )
+    return fig
     return fig
 def filter_chips(team, match_count, taker_count, side_focus, venue_filter):
     chips = []
