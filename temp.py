@@ -330,7 +330,7 @@ def xg_category(xg):
     return "Low xG (<0.05)"
 
 def percentile_rank(series, value):
-    s = series.dropna()
+    s = pd.to_numeric(series, errors="coerce").dropna()
     if len(s) == 0 or pd.isna(value):
         return np.nan
     return float((s <= value).mean() * 100)
@@ -467,28 +467,20 @@ def draw_pitch(fig, title=None, height=700, half=False):
     return fig
 
 # =========================================================
-# CHART FUNCTIONS  (single canonical definition each)
+# CHART FUNCTIONS
 # =========================================================
 def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", side_focus="Both"):
-    """
-    Plot shots on a half-pitch. Hover shows Player, Team, xG.
-    Expects columns already renamed by prepare_data:
-      shot_xg, shot_location_x, shot_location_y, Shooter, corner_team
-    """
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty:
         return annotate_side(fig, side_focus)
 
     df = df_shots.copy()
-
-    # Ensure xG is numeric; keep only rows that have a shot xG
     df["shot_xg"] = pd.to_numeric(df.get("shot_xg", np.nan), errors="coerce").fillna(0)
     plot_df = df[df["shot_xg"] > 0].dropna(subset=["shot_location_x", "shot_location_y"])
 
     if plot_df.empty:
         return annotate_side(fig, side_focus)
 
-    # Use corner_team for grouping regardless of what color_col was passed in
     group_col = "corner_team" if "corner_team" in plot_df.columns else color_col
 
     for team, sub in plot_df.groupby(group_col, dropna=False):
@@ -510,13 +502,7 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", side_focu
         ))
     return annotate_side(fig, side_focus)
 
-
 def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
-    """
-    Plot delivery end-locations on a full pitch. Hover shows Player, Team, SP Outcome.
-    Expects columns already renamed by prepare_data:
-      pass_location_x/y, pass_end_location_x/y, Taker, corner_team, SP_outcome
-    """
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     plot = df_events.dropna(
         subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
@@ -548,7 +534,6 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
             hovertemplate="%{text}<extra></extra>",
         ))
     return annotate_side(fig, side_focus)
-
 
 def outcome_pie(df, title="Outcome Split"):
     if df.empty:
@@ -996,7 +981,6 @@ with st.sidebar:
         outswing_only= st.checkbox("Outswingers only")
         short_only   = st.checkbox("Short corners only")
 
-# Defaults if expander hasn't been interacted with
 minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
 minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
 min_range       = locals().get("min_range",       (minute_min, minute_max))
@@ -1017,15 +1001,20 @@ short_only      = locals().get("short_only",      False)
 # =========================================================
 # FILTERS
 # =========================================================
-def apply_filters(events, matches):
+def apply_filters(events, matches, team_override="__USE_SELECTED_TEAM__"):
     out_matches = matches[matches["total_corners"].between(corner_range[0], corner_range[1])].copy()
     out_events  = events[events["match_id"].isin(out_matches["match_id"].unique())].copy()
     out_events  = out_events[out_events["Minute"].fillna(0).between(min_range[0], min_range[1])]
 
     effective_side_filter = {"Left": ["Left"], "Right": ["Right"]}.get(side_focus, ["Left", "Right", "Unknown"])
 
+    if team_override == "__USE_SELECTED_TEAM__":
+        selected_team_filter = None if sel_team == "All Teams" else [sel_team]
+    else:
+        selected_team_filter = team_override
+
     filter_map = {
-        "corner_team":     None if sel_team == "All Teams" else [sel_team],
+        "corner_team":     selected_team_filter,
         "Taker":           sel_takers if sel_takers else None,
         "Match":           sel_matches if sel_matches else None,
         "side":            effective_side_filter,
@@ -1039,15 +1028,24 @@ def apply_filters(events, matches):
         if allowed is not None:
             out_events = out_events[out_events[col].astype(str).isin([str(x) for x in allowed])]
 
-    if shot_only:     out_events = out_events[out_events["led_to_shot"]]
-    if short_only:    out_events = out_events[out_events["is_short_corner"]]
-    if inswing_only and not outswing_only:  out_events = out_events[out_events["is_inswinger"]]
-    if outswing_only and not inswing_only:  out_events = out_events[out_events["is_outswinger"]]
+    if shot_only:
+        out_events = out_events[out_events["led_to_shot"]]
+    if short_only:
+        out_events = out_events[out_events["is_short_corner"]]
+    if inswing_only and not outswing_only:
+        out_events = out_events[out_events["is_inswinger"]]
+    if outswing_only and not inswing_only:
+        out_events = out_events[out_events["is_outswinger"]]
 
     out_matches = out_matches[out_matches["match_id"].isin(out_events["match_id"].unique())]
     return out_events, out_matches, build_team_summary(out_events), taker_summary(out_events)
 
 league_event_df, league_match_df, league_team_df, league_taker_df = apply_filters(df, match_summary)
+
+# comparison set for percentiles: same filters, but no selected-team restriction
+comparison_event_df, comparison_match_df, comparison_team_df, comparison_taker_df = apply_filters(
+    df, match_summary, team_override=None
+)
 
 filter_chips(sel_team, len(sel_matches), len(sel_takers), side_focus, venue_filter)
 
@@ -1059,12 +1057,12 @@ def render_kpis(events):
     total_xg  = events["shot_xg"].fillna(0).sum() if not events.empty else 0
     shot_rate = events["led_to_shot"].mean()       if not events.empty else 0
     goals     = int(events["goal_from_corner"].sum()) if not events.empty else 0
-    with c1: metric_card("Events",    f"{len(events):,}",                                     "Corner actions")
+    with c1: metric_card("Events",    f"{len(events):,}", "Corner actions")
     with c2: metric_card("Matches",   f"{events['match_id'].nunique() if not events.empty else 0:,}", "Unique matches")
     with c3: metric_card("Shots",     f"{int(events['led_to_shot'].sum()) if not events.empty else 0:,}", "From corners")
-    with c4: metric_card("Total xG",  f"{total_xg:.2f}",                                     "xG generated")
-    with c5: metric_card("Shot Rate", f"{shot_rate*100:.1f}%",                                "Shots / corner")
-    with c6: metric_card("Goals",     f"{goals}",                                             "From corners")
+    with c4: metric_card("Total xG",  f"{total_xg:.2f}", "xG generated")
+    with c5: metric_card("Shot Rate", f"{shot_rate*100:.1f}%", "Shots / corner")
+    with c6: metric_card("Goals",     f"{goals}", "From corners")
 
 # =========================================================
 # PAGES
@@ -1122,8 +1120,10 @@ if page == "🏠 Executive Dashboard":
 
     with st.expander("More breakdowns", expanded=False):
         c3, c4 = st.columns(2)
-        with c3: st.plotly_chart(outcome_pie(league_event_df),   use_container_width=True)
-        with c4: st.plotly_chart(technique_pie(league_event_df), use_container_width=True)
+        with c3:
+            st.plotly_chart(outcome_pie(league_event_df), use_container_width=True)
+        with c4:
+            st.plotly_chart(technique_pie(league_event_df), use_container_width=True)
 
 elif page == "📊 Visualisation Studio":
     section_header("Visualisation Studio", "Cleaner match visuals with side-aware filtering.")
@@ -1201,8 +1201,10 @@ elif page == "🏟 Team Analysis":
 
         with tabs[0]:
             c1, c2 = st.columns(2)
-            with c1: st.plotly_chart(outcome_pie(team_ev,   f"{sel_team} — Outcome Split"),   use_container_width=True)
-            with c2: st.plotly_chart(technique_pie(team_ev, f"{sel_team} — Technique Split"), use_container_width=True)
+            with c1:
+                st.plotly_chart(outcome_pie(team_ev, f"{sel_team} — Outcome Split"), use_container_width=True)
+            with c2:
+                st.plotly_chart(technique_pie(team_ev, f"{sel_team} — Technique Split"), use_container_width=True)
             c3, c4 = st.columns(2)
             with c3:
                 zone_df = team_ev.groupby("end_zone", dropna=False).size().reset_index(name="n")
@@ -1268,9 +1270,13 @@ elif page == "🏟 Team Analysis":
             else:
                 row = team_row.iloc[0]
                 c1, c2, c3 = st.columns(3)
-                with c1: metric_card("Corners/Match", human_val(row.get("corners_per_match")),   "Volume")
-                with c2: metric_card("Shot Rate",     human_pct(row.get("shot_rate")),            "Shots per corner")
-                with c3: metric_card("xG/Match",      human_val(row.get("xg_per_match"), 3),     "Chance quality")
+                with c1:
+                    metric_card("Corners/Match", human_val(row.get("corners_per_match")), "Volume")
+                with c2:
+                    metric_card("Shot Rate", human_pct(row.get("shot_rate")), "Shots per corner")
+                with c3:
+                    metric_card("xG/Match", human_val(row.get("xg_per_match"), 3), "Chance quality")
+
                 st.markdown("<br>", unsafe_allow_html=True)
                 metric_map = [
                     ("Corners/Match",    "corners_per_match"),
@@ -1280,9 +1286,10 @@ elif page == "🏟 Team Analysis":
                     ("Short Corner Rate","short_corner_rate"),
                     ("Inswinger Rate",   "inswinger_rate"),
                 ]
+
                 for label, col in metric_map:
                     val = row.get(col)
-                    pct = percentile_rank(league_team_df[col], val) if col in league_team_df.columns else np.nan
+                    pct = percentile_rank(comparison_team_df[col], val) if col in comparison_team_df.columns else np.nan
                     display = human_pct(val) if "Rate" in label else human_val(val, 3)
                     st.markdown(
                         f"**{label}**: {display} · {pct:.0f}th percentile"
@@ -1313,8 +1320,10 @@ elif page == "🔍 Match Explorer":
 
     with tabs[1]:
         c1, c2 = st.columns(2)
-        with c1: st.plotly_chart(minute_histogram(match_ev, "Minute Distribution", color_col="corner_team"), use_container_width=True)
-        with c2: st.plotly_chart(cumulative_line(match_ev, "Cumulative Corners"), use_container_width=True)
+        with c1:
+            st.plotly_chart(minute_histogram(match_ev, "Minute Distribution", color_col="corner_team"), use_container_width=True)
+        with c2:
+            st.plotly_chart(cumulative_line(match_ev, "Cumulative Corners"), use_container_width=True)
 
     with tabs[2]:
         shot_df = match_ev.dropna(subset=["shot_location_x", "shot_location_y"])
@@ -1365,8 +1374,10 @@ elif page == "👤 Scouting Center":
             filt = league_taker_df[league_taker_df["corners"] >= min_corners_scout]
             st.dataframe(filt.reset_index(drop=True), use_container_width=True, height=460)
             c1, c2 = st.columns(2)
-            with c1: st.plotly_chart(taker_bar_chart(filt, "xg_per_corner", "Top Takers — xG/Corner", min_corners=min_corners_scout), use_container_width=True)
-            with c2: st.plotly_chart(taker_bar_chart(filt, "shot_rate",     "Top Takers — Shot Rate",  min_corners=min_corners_scout), use_container_width=True)
+            with c1:
+                st.plotly_chart(taker_bar_chart(filt, "xg_per_corner", "Top Takers — xG/Corner", min_corners=min_corners_scout), use_container_width=True)
+            with c2:
+                st.plotly_chart(taker_bar_chart(filt, "shot_rate", "Top Takers — Shot Rate", min_corners=min_corners_scout), use_container_width=True)
 
     with tabs[2]:
         teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
@@ -1374,8 +1385,10 @@ elif page == "👤 Scouting Center":
             empty_state("Need at least 2 teams.")
         else:
             c1, c2 = st.columns(2)
-            with c1: team_a = st.selectbox("Team A", teams, key="cmp_a")
-            with c2: team_b = st.selectbox("Team B", teams, index=min(1, len(teams)-1), key="cmp_b")
+            with c1:
+                team_a = st.selectbox("Team A", teams, key="cmp_a")
+            with c2:
+                team_b = st.selectbox("Team B", teams, index=min(1, len(teams)-1), key="cmp_b")
 
             a = league_team_df[league_team_df["team"] == team_a].iloc[0]
             b = league_team_df[league_team_df["team"] == team_b].iloc[0]
@@ -1393,12 +1406,16 @@ elif page == "👤 Scouting Center":
             c3, c4 = st.columns(2)
             with c3:
                 shot_a = ev_a.dropna(subset=["shot_location_x", "shot_location_y"])
-                if shot_a.empty: empty_state(f"No shots — {team_a}")
-                else: st.plotly_chart(shotmap_figure(shot_a, "corner_team", f"Shotmap — {team_a}", side_focus=side_focus), use_container_width=True)
+                if shot_a.empty:
+                    empty_state(f"No shots — {team_a}")
+                else:
+                    st.plotly_chart(shotmap_figure(shot_a, "corner_team", f"Shotmap — {team_a}", side_focus=side_focus), use_container_width=True)
             with c4:
                 shot_b = ev_b.dropna(subset=["shot_location_x", "shot_location_y"])
-                if shot_b.empty: empty_state(f"No shots — {team_b}")
-                else: st.plotly_chart(shotmap_figure(shot_b, "corner_team", f"Shotmap — {team_b}", side_focus=side_focus), use_container_width=True)
+                if shot_b.empty:
+                    empty_state(f"No shots — {team_b}")
+                else:
+                    st.plotly_chart(shotmap_figure(shot_b, "corner_team", f"Shotmap — {team_b}", side_focus=side_focus), use_container_width=True)
 
     with tabs[3]:
         scout_teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
@@ -1493,17 +1510,21 @@ elif page == "📈 Trend Lab":
 elif page == "🗂 Data Hub":
     tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "⬇ Downloads"])
 
-    with tabs[0]: st.dataframe(league_event_df.reset_index(drop=True), use_container_width=True, height=600)
-    with tabs[1]: st.dataframe(league_team_df.reset_index(drop=True),  use_container_width=True, height=600)
-    with tabs[2]: st.dataframe(league_match_df.reset_index(drop=True), use_container_width=True, height=600)
-    with tabs[3]: st.dataframe(league_taker_df.reset_index(drop=True), use_container_width=True, height=600)
+    with tabs[0]:
+        st.dataframe(league_event_df.reset_index(drop=True), use_container_width=True, height=600)
+    with tabs[1]:
+        st.dataframe(league_team_df.reset_index(drop=True), use_container_width=True, height=600)
+    with tabs[2]:
+        st.dataframe(league_match_df.reset_index(drop=True), use_container_width=True, height=600)
+    with tabs[3]:
+        st.dataframe(league_taker_df.reset_index(drop=True), use_container_width=True, height=600)
 
     with tabs[4]:
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.download_button("⬇ Events CSV",  league_event_df.to_csv(index=False).encode(), "events.csv",  "text/csv", use_container_width=True)
+            st.download_button("⬇ Events CSV", league_event_df.to_csv(index=False).encode(), "events.csv", "text/csv", use_container_width=True)
         with c2:
-            st.download_button("⬇ Teams CSV",   league_team_df.to_csv(index=False).encode(),  "teams.csv",   "text/csv", use_container_width=True)
+            st.download_button("⬇ Teams CSV", league_team_df.to_csv(index=False).encode(), "teams.csv", "text/csv", use_container_width=True)
         with c3:
             st.download_button("⬇ Matches CSV", league_match_df.to_csv(index=False).encode(), "matches.csv", "text/csv", use_container_width=True)
         wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df)
