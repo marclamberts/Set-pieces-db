@@ -396,32 +396,29 @@ def figure_layout(fig, height=420, title=None):
     return fig
 
 def draw_pitch(fig, title=None, height=700, half=False):
-    # Vertical orientation: X is Width (0-80), Y is Length (0-120)
+    # Vertical orientation: X-axis is width (0-80), Y-axis is length (0-120)
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
+    
     fig.update_layout(
         title=title,
         height=height,
-        paper_bgcolor=PITCH,
-        plot_bgcolor=PITCH,
-        margin=dict(l=8, r=8, t=42 if title else 8, b=8),
-        font=dict(color="white"),
-        hoverlabel=dict(bgcolor="#0d1c31", font_color="white"),
+        template="plotly_dark",
+        paper_bgcolor="#0e1117", # Match your app's background
+        plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
         shapes=[
-            # Outer boundary
-            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color=PITCH_LINE, width=2)),
-            # Halfway line
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color=PITCH_LINE, width=1.5)),
-            # Center circle
-            dict(type="circle", x0=30, y0=50, x1=50, y1=70, line=dict(color=PITCH_LINE, width=1.5)),
-            # Penalty area
-            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color=PITCH_LINE, width=1.5)),
-            # 6-yard box
-            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color=PITCH_LINE, width=1.5)),
+            # Outer Pitch Boundary
+            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
+            # Halfway Line
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
+            # Penalty Area (Top)
+            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
+            # 6-yard Box (Top)
+            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
         ],
     )
     return fig
-
 def filter_chips(team, match_count, taker_count, side_focus, venue_filter):
     chips = []
     if team != "All Teams":
