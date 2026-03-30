@@ -725,43 +725,39 @@ def taker_summary(df):
 # =========================================================
 # CHARTS
 # =========================================================
-def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
-    # Create the vertical pitch
+def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map"):
+    # Initialize vertical pitch
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Filter for rows that have end locations
+    if df_events.empty:
+        return fig
+    
+    # Filter for rows with end location data
     plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
 
-    if plot.empty:
-        return fig
-
-    # Group by the chosen color column (e.g., delivery_zone or team)
-    legend_added = set()
     for category, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(
             go.Scatter(
-                # Flip Y for visual correction: 80 - y puts 'Right' on the right side of the screen
-                x=80 - sub["pass_end_location_y"], 
-                y=sub["pass_end_location_x"],      
-                mode="markers", # "markers" only = NO LINES
+                x=sub["pass_end_location_y"], # Width (Horizontal axis)
+                y=sub["pass_end_location_x"], # Length (Vertical axis)
+                mode="markers",               # ONLY points, NO lines
                 name=str(category),
                 marker=dict(
                     size=12, 
-                    opacity=0.7,
+                    opacity=0.8,
                     line=dict(width=1, color='white')
                 ),
-                # Tooltip with SP_outcome label
+                # Hover labels using SP_outcome
                 text=[
                     f"<b>Match:</b> {r.get('Match','')}<br>"
                     f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
                     f"<b>Taker:</b> {r.get('Taker','')}<br>"
-                    f"<b>Zone:</b> {r.get(color_col, '')}"
+                    f"<b>Zone:</b> {category}"
                     for _, r in sub.iterrows()
                 ],
-                hovertemplate="%{text}<extra></extra>",
+                hovertemplate="%{text}<extra></extra>"
             )
         )
-        
     return fig
 
 def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
