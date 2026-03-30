@@ -189,38 +189,45 @@ st.markdown(CSS, unsafe_allow_html=True)
 import plotly.graph_objects as go
 import numpy as np
 
-def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
+import plotly.graph_objects as go
+import numpy as np
+import pandas as pd
+
+def shotmap_figure(df_shots, title="Shotmap"):
+    # 1. Initialize Vertical Pitch (Goal at Y=120)
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: 
         return fig
 
-    # 1. Robust Column Discovery
-    # Finds 'shot.statsbomb_xg' or 'shot_statsbomb_xg' or anything containing 'statsbomb_xg'
+    # 2. Robust Column Discovery (Finds 'shot.statsbomb_xg' or 'shot_statsbomb_xg')
     xg_col = next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
-    # Finds the team column (usually 'pass_team_name' or 'corner_team')
-    team_col = next((c for c in df_shots.columns if "team" in c.lower()), df_shots.columns[0])
+    team_col = next((c for c in df_shots.columns if "team" in c.lower()), "pass_team_name")
     
+    if not xg_col:
+        return fig # Or return an empty pitch if no xG column is found
+
+    # 3. FILTER: Only plot shots where xG > 0
     plot = df_shots.copy()
+    plot[xg_col] = pd.to_numeric(plot[xg_col], errors='coerce').fillna(0)
+    plot = plot[plot[xg_col] > 0]
+    
+    if plot.empty:
+        return fig
 
-    # 2. Handle xG sizing safely
-    if xg_col:
-        # Convert to numeric just in case it's stored as a string
-        plot[xg_col] = pd.to_numeric(plot[xg_col], errors='coerce').fillna(0)
-        plot["_size"] = np.clip(plot[xg_col] * 100 + 10, 10, 40)
-    else:
-        plot["_size"] = 15 # Default size if column is missing
+    # 4. Marker Sizing
+    plot["_size"] = np.clip(plot[xg_col] * 100 + 10, 10, 40)
 
-    # 3. Plotting
+    # 5. Plotting
     for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], 
-            y=sub["shot_location_x"],
+            x=80 - sub["shot_location_y"], # Pitch width (80) - Y coord
+            y=sub["shot_location_x"],      # Pitch length (X coord)
             mode="markers",
             name=str(group),
-            marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
+            marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1.5)),
             text=[
                 f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
-                f"<b>xG:</b> {r[xg_col]:.3f}<br>" if xg_col else "<b>xG:</b> N/A<br>"
+                f"<b>xG:</b> {r[xg_col]:.3f}<br>"
                 f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
