@@ -764,9 +764,7 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
     return annotate_side(fig, side_focus)
 
 def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
-    # Using the Vertical Pitch (Height 700)
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
-    
     plot = df_events.dropna(
         subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
     ).copy()
@@ -778,29 +776,24 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
     for _, row in plot.iterrows():
         category = str(row.get(color_col, "Unknown"))
         show = category not in legend_added
-        if show:
-            legend_added.add(category)
+        if show: legend_added.add(category)
 
         fig.add_trace(
             go.Scatter(
-                # Use only the end location coordinates
-                x=[80 - row["pass_end_location_y"]], 
-                y=[row["pass_end_location_x"]],      
-                mode="markers", # Removed "lines+" to hide the delivery paths
+                x=[80 - row["pass_end_location_y"]],
+                y=[row["pass_end_location_x"]],
+                mode="markers",
                 name=category,
                 showlegend=show,
                 legendgroup=category,
-                marker=dict(
-                    size=12, 
-                    opacity=0.8,
-                    line=dict(width=1, color='white')
-                ),
+                marker=dict(size=12, opacity=0.8, line=dict(width=1, color='white')),
+                # UPDATED TEXT HERE
                 text=(
                     f"<b>{row.get('Match','')}</b><br>"
                     f"Team: {row.get('corner_team','')}<br>"
-                    f"Side: {row.get('side','')}<br>"
+                    f"Outcome: {row.get('SP_outcome', 'N/A')}<br>" # This adds the label
                     f"Taker: {row.get('Taker','')}<br>"
-                    f"Outcome: {row.get('SP_outcome','')}"
+                    f"Side: {row.get('side','')}"
                 ),
                 hovertemplate="%{text}<extra></extra>",
             )
