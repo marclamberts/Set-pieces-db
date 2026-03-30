@@ -186,44 +186,75 @@ div[data-testid="stDataFrame"] {{
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+import plotly.graph_objects as go
+import numpy as np
+
+# --- HELPER: Vertical Pitch ---
+def draw_pitch(fig, title=None, height=700, half=False):
+    fig.update_xaxes(range=[0, 80], visible=False)
+    fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_layout(
+        title=title, height=height, template="plotly_dark",
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
+        shapes=[
+            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
+        ],
+    )
+    return fig
+
+# --- SHOTMAP: Vertical with Safe Column Check ---
 def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
+    if df_shots.empty: return fig
     
-    # Use the specific xG column from your CSV
+    # Dynamically find the xG column to avoid KeyError
     xg_col = "shot.statsbomb_xg"
-    plot = df_shots.copy()
-    plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 30)
+    if xg_col not in df_shots.columns:
+        # Fallback: search for any column containing 'statsbomb_xg'
+        xg_col = next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
 
-    for group, sub in plot.groupby(color_col):
+    plot = df_shots.copy()
+    if xg_col:
+        plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 30)
+    else:
+        plot["_size"] = 15
+
+    for group, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], # Vertical orientation: width is X
-            y=sub["shot_location_x"],      # Vertical orientation: length is Y
+            x=80 - sub["shot_location_y"], 
+            y=sub["shot_location_x"],
             mode="markers",
             name=str(group),
-            marker=dict(size=sub["_size"], opacity=0.7, line=dict(width=1, color="white")),
+            marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
                 f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
-                f"<b>Shooter:</b> {r.get('Shooter', 'Unknown')}<br>"
-                f"<b>xG:</b> {r.get(xg_col, 0):.2f}"
+                f"<b>xG:</b> {r.get(xg_col, 0):.3f}" if xg_col else ""
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
         ))
     return fig
 
+# --- DELIVERY MAP: Vertical, No Lines, SP_outcome Label ---
 def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
-    
-    for group, sub in df_events.groupby(color_col):
+    plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
+    if plot.empty: return fig
+
+    for group, sub in plot.groupby(color_col, dropna=False):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
             mode="markers", # DOTS ONLY
             name=str(group),
-            marker=dict(size=12, opacity=0.8, line=dict(width=1, color="white")),
+            marker=dict(size=12, opacity=0.8, line=dict(width=1, color='white')),
             text=[
                 f"<b>Match:</b> {r.get('Match','')}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>" # This adds the label
                 f"<b>Taker:</b> {r.get('Taker', 'Unknown')}"
                 for _, r in sub.iterrows()
             ],
