@@ -189,73 +189,61 @@ st.markdown(CSS, unsafe_allow_html=True)
 import plotly.graph_objects as go
 import numpy as np
 
-# --- HELPER: Draw Vertical Pitch ---
-def draw_pitch(fig, title=None, height=700, half=False):
-    fig.update_xaxes(range=[0, 80], visible=False)
-    fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
-    fig.update_layout(
-        title=title, height=height, template="plotly_dark",
-        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-        margin=dict(l=10, r=10, t=40, b=10),
-        shapes=[
-            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
-            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
-            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
-        ],
-    )
-    return fig
-
-# --- SHOTMAP: Vertical, xG, Player (Shooter) ---
-def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
+def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
-    if df_shots.empty: return fig
+    if df_shots.empty: 
+        return fig
 
-    # Find the team column safely (looks for 'pass_team_name' or 'corner_team')
-    team_col = next((c for c in df_shots.columns if "team" in c.lower()), df_shots.columns[0])
+    # Ensure we are using the correct column names
     xg_col = "shot.statsbomb_xg"
+    player_col = "Shooter"
+    
+    # Check if color_col exists, fallback to shot_team_name if not
+    group_col = color_col if color_col in df_shots.columns else "shot_team_name"
     
     plot = df_shots.copy()
-    # Ensure xG exists for sizing
-    size_vals = plot[xg_col].fillna(0) if xg_col in plot.columns else [0.1]*len(plot)
-    plot["_size"] = np.clip(np.array(size_vals) * 80 + 10, 10, 35)
+    # Size markers by xG (multiplied for visibility)
+    plot["_size"] = np.clip(plot[xg_col].fillna(0).astype(float) * 100 + 10, 10, 40)
 
-    for group, sub in plot.groupby(team_col):
+    for team, sub in plot.groupby(group_col):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], 
-            y=sub["shot_location_x"],
+            x=80 - sub["shot_location_y"], # Horizontal screen = Pitch width
+            y=sub["shot_location_x"],      # Vertical screen = Pitch length
             mode="markers",
-            name=str(group),
+            name=str(team),
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
-                f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
-                f"<b>xG:</b> {r.get('shot.statsbomb_xg'):.3f}"
+                f"<b>Player:</b> {r[player_col]}<br>"
+                f"<b>xG:</b> {float(r[xg_col]):.3f}<br>"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
         ))
     return fig
 
-# --- DELIVERY MAP: Vertical, No Lines, SP_outcome ---
-def delivery_map_figure(df_events, title="Delivery Map", side_focus="Both"):
+def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Filter for landing points
+    # Filter for corners with landing points
     plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
-    if plot.empty: return fig
+    if plot.empty: 
+        return fig
 
-    team_col = next((c for c in plot.columns if "team" in c.lower()), plot.columns[0])
+    # Group by the team that took the corner
+    group_col = color_col if color_col in plot.columns else "pass_team_name"
 
-    for group, sub in plot.groupby(team_col):
+    for team, sub in plot.groupby(group_col):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
             mode="markers", # DOTS ONLY
-            name=str(group),
-            marker=dict(size=12, opacity=0.8, line=dict(width=1, color='white')),
+            name=str(team),
+            marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
             text=[
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
-                f"<b>Taker:</b> {r.get('Taker', 'N/A')}"
+                f"<b>Outcome:</b> {r['SP_outcome']}<br>"
+                f"<b>Taker:</b> {r.get('Taker', 'N/A')}<br>"
+                f"<b>Match:</b> {r.get('Match', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
