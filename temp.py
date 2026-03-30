@@ -186,70 +186,7 @@ div[data-testid="stDataFrame"] {{
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-import plotly.graph_objects as go
-import numpy as np
 
-# 1. HELPER: Draws the Vertical Pitch
-def draw_pitch(fig, title=None, height=700, half=False):
-    # Vertical: X is width (0-80), Y is length (0-120)
-    fig.update_xaxes(range=[0, 80], visible=False)
-    fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
-    
-    fig.update_layout(
-        title=title, height=height, template="plotly_dark",
-        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-        margin=dict(l=10, r=10, t=40, b=10),
-        shapes=[
-            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)), # Border
-            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)), # Halfway
-            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)), # Box
-            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)), # 6-yard
-        ],
-    )
-    return fig
-
-# 2. REQUIRED: Shotmap Function (Prevents NameError)
-def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", side_focus="Both"):
-    fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
-    if df_shots.empty: return fig
-    
-    # Coordinates from CSV: shot_location_x (length), shot_location_y (width)
-    for group, sub in df_shots.groupby(color_col, dropna=False):
-        fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], # Flip width for visual orientation
-            y=sub["shot_location_x"],
-            mode="markers",
-            name=str(group),
-            marker=dict(size=12, opacity=0.8, line=dict(color="white", width=1)),
-            text=[f"Outcome: {r.get('SP_outcome','N/A')}" for _, r in sub.iterrows()],
-            hovertemplate="%{text}<extra></extra>"
-        ))
-    return fig
-
-# 3. UPDATED: Delivery Map (No lines, Vertical, SP_outcome label)
-def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
-    fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
-    
-    # End coordinates from CSV: pass_end_location_x (length), pass_end_location_y (width)
-    plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
-    if plot.empty: return fig
-
-    for category, sub in plot.groupby(color_col, dropna=False):
-        fig.add_trace(go.Scatter(
-            x=80 - sub["pass_end_location_y"], # Width
-            y=sub["pass_end_location_x"],      # Length
-            mode="markers",                    # NO LINES
-            name=str(category),
-            marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
-            text=[
-                f"<b>Match:</b> {r.get('Match','')}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
-                f"<b>Taker:</b> {r.get('Taker','')}"
-                for _, r in sub.iterrows()
-            ],
-            hovertemplate="%{text}<extra></extra>"
-        ))
-    return fig
 
 # =========================================================
 # LOGIN
