@@ -189,7 +189,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 import plotly.graph_objects as go
 import numpy as np
 
-# 1. VERTICAL PITCH HELPER
+# --- HELPER: Draw Vertical Pitch ---
 def draw_pitch(fig, title=None, height=700, half=False):
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
@@ -206,26 +206,21 @@ def draw_pitch(fig, title=None, height=700, half=False):
     )
     return fig
 
-# 2. SHOTMAP: Vertical + xG + Player
-def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
+# --- SHOTMAP: Vertical, xG, Player (Shooter) ---
+def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: return fig
 
-    plot = df_shots.copy()
-    
-    # Robust check for the xG column
+    # Find the team column safely (looks for 'pass_team_name' or 'corner_team')
+    team_col = next((c for c in df_shots.columns if "team" in c.lower()), df_shots.columns[0])
     xg_col = "shot.statsbomb_xg"
-    if xg_col not in plot.columns:
-        # If not found, try common variations (like underscores instead of dots)
-        xg_col = next((c for c in plot.columns if "statsbomb_xg" in c), None)
     
-    # Sizing logic
-    if xg_col:
-        plot["_size"] = np.clip(plot[xg_col].fillna(0) * 80 + 10, 10, 35)
-    else:
-        plot["_size"] = 15
+    plot = df_shots.copy()
+    # Ensure xG exists for sizing
+    size_vals = plot[xg_col].fillna(0) if xg_col in plot.columns else [0.1]*len(plot)
+    plot["_size"] = np.clip(np.array(size_vals) * 80 + 10, 10, 35)
 
-    for group, sub in plot.groupby(color_col, dropna=False):
+    for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
             x=80 - sub["shot_location_y"], 
             y=sub["shot_location_x"],
@@ -233,34 +228,34 @@ def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_f
             name=str(group),
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
-                f"<b>Player:</b> {r.get('Shooter', 'Unknown')}<br>"
-                f"<b>xG:</b> {r.get(xg_col, 0):.3f}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
+                f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
+                f"<b>xG:</b> {r.get(xg_col, 0):.3f}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
         ))
     return fig
 
-# 3. DELIVERY MAP: Vertical + NO LINES + SP_outcome
-def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
+# --- DELIVERY MAP: Vertical, No Lines, SP_outcome ---
+def delivery_map_figure(df_events, title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Filter for delivery landing points
+    # Filter for landing points
     plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
     if plot.empty: return fig
 
-    for group, sub in plot.groupby(color_col, dropna=False):
+    team_col = next((c for c in plot.columns if "team" in c.lower()), plot.columns[0])
+
+    for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
-            mode="markers", # <--- DOTS ONLY (No Lines)
+            mode="markers", # DOTS ONLY
             name=str(group),
-            marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
+            marker=dict(size=12, opacity=0.8, line=dict(width=1, color='white')),
             text=[
-                f"<b>Taker:</b> {r.get('Taker', 'Unknown')}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>" # <--- SP_outcome label
-                f"<b>Match:</b> {r.get('Match', '')}"
+                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
+                f"<b>Taker:</b> {r.get('Taker', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
@@ -1275,7 +1270,7 @@ elif page == "📊 Visualisation Studio":
             st.info("No shot data available.")
         else:
             st.plotly_chart(
-                shotmap_figure(shot_df, color_col="pass_team_name", title="Shotmap & xG", side_focus=side_focus),
+                shotmap_figure(shot_df, title="Shot Locations & xG", side_focus=side_focus),
                 use_container_width=True,
             )
 
@@ -1285,7 +1280,7 @@ elif page == "📊 Visualisation Studio":
             st.info("No delivery landing data available.")
         else:
             st.plotly_chart(
-                delivery_map_figure(delivery_df, color_col="pass_team_name", title="Delivery Landing Points", side_focus=side_focus),
+                delivery_map_figure(delivery_df, title="Delivery Landing Points", side_focus=side_focus),
                 use_container_width=True,
             )
     with tabs[2]:
