@@ -257,31 +257,38 @@ def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_f
         ))
     return annotate_side(fig, side_focus)
 
-def delivery_map_figure(df_events, title="Delivery Map", side_focus="Both", color_col="pass_team_name"):
-    """Fixed arguments to prevent TypeErrors. Shows dots only."""
+def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
-    
-    plot_df = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
-    if plot_df.empty: 
-        return fig
+    plot = df_events.dropna(
+        subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
+    ).copy()
 
-    group_col = color_col if color_col in plot_df.columns else "pass_team_name"
+    if plot.empty:
+        return annotate_side(fig, side_focus)
 
-    for team, sub in plot_df.groupby(group_col):
+    legend_added = set()
+    for _, row in plot.iterrows():
+        category = str(row.get(color_col, "Unknown"))
+        show = category not in legend_added
+        if show:
+            legend_added.add(category)
+
         fig.add_trace(go.Scatter(
-            x=sub["pass_end_location_y"], 
-            y=sub["pass_end_location_x"],
+            x=[80 - row["pass_end_location_y"]],
+            y=[row["pass_end_location_x"]],
             mode="markers",
-            name=str(team),
+            name=category,
+            showlegend=show,
+            legendgroup=category,
             marker=dict(size=12, opacity=0.8, line=dict(width=1, color='white')),
-            text=[
-                f"<b>Taker:</b> {r.get('Taker', 'N/A')}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
-                for _, r in sub.iterrows()
-            ],
-            hovertemplate="%{text}<extra></extra>"
+            text=(
+                f"<b>Player:</b> {row.get('Taker', 'N/A')}<br>"
+                f"<b>Team:</b> {row.get('corner_team', 'N/A')}<br>"
+                f"<b>SP Outcome:</b> {row.get('SP_outcome', 'N/A')}"
+            ),
+            hovertemplate="%{text}<extra></extra>",
         ))
-    return fig
+    return annotate_side(fig, side_focus)
 # =========================================================
 # LOGIN
 # =========================================================
