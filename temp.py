@@ -62,7 +62,7 @@ body, .stApp {{
     color: {TEXT};
 }}
 .block-container {{
-    max-width: 1700px;
+    max-width: 1680px;
     padding-top: 0.8rem;
     padding-bottom: 1.5rem;
 }}
@@ -75,7 +75,7 @@ body, .stApp {{
     border: 1px solid rgba(93,168,255,0.18);
     border-radius: 26px;
     padding: 24px 28px 20px 28px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     box-shadow: 0 16px 48px rgba(0,0,0,0.22);
 }}
 .hero-title {{
@@ -100,7 +100,7 @@ body, .stApp {{
     border: 1px solid rgba(93,168,255,0.20);
     font-size: 0.76rem;
     margin-right: 0.4rem;
-    margin-top: 0.5rem;
+    margin-top: 0.45rem;
     font-weight: 500;
 }}
 .kpi-card {{
@@ -108,7 +108,7 @@ body, .stApp {{
     border: 1px solid {BORDER};
     border-radius: 18px;
     padding: 16px 16px 12px 16px;
-    min-height: 110px;
+    min-height: 108px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.18);
 }}
 .kpi-label {{
@@ -194,11 +194,11 @@ def login_screen():
         """
         <div class="hero-wrap">
             <div class="hero-title">⚽ <span>Allsvenskan</span> Set Piece Studio Pro</div>
-            <div class="hero-sub">Premium corner analytics — simplified, faster, cleaner.</div>
+            <div class="hero-sub">A cleaner corner analysis workspace for coaches and analysts — faster reads, clearer visuals, better side filtering.</div>
             <div>
                 <span class="pill">2025 Season</span>
                 <span class="pill">Team Intel</span>
-                <span class="pill">Match Explorer</span>
+                <span class="pill">Visual Studio</span>
                 <span class="pill">Exports</span>
             </div>
         </div>
@@ -351,7 +351,7 @@ def section_header(title, sub=""):
     st.markdown(
         f'<div class="section-title">{title}</div>'
         + (f'<div class="section-sub">{sub}</div>' if sub else ""),
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 def metric_card(label, value, foot=""):
@@ -416,6 +416,46 @@ def draw_pitch(fig, title=None, height=560, half=False):
     )
     return fig
 
+def filter_chips(team, match_count, taker_count, side_focus, venue_filter):
+    chips = []
+    if team != "All Teams":
+        chips.append(f"Team: {team}")
+    if match_count:
+        chips.append(f"Matches: {match_count}")
+    if taker_count:
+        chips.append(f"Takers: {taker_count}")
+    if side_focus != "Both":
+        chips.append(f"Side: {side_focus}")
+    if set(venue_filter) != {"Home", "Away", "Unknown"}:
+        chips.append("Venue filtered")
+    if not chips:
+        chips = ["All teams", "All matches", "Both sides"]
+
+    html = "".join([f'<span class="pill">{c}</span>' for c in chips])
+    st.markdown(f'<div style="margin:0.05rem 0 0.75rem 0">{html}</div>', unsafe_allow_html=True)
+
+def visual_context_note(side_focus, n_events):
+    label = "Both sides" if side_focus == "Both" else f"{side_focus} side only"
+    st.caption(f"Showing: {label} · {n_events:,} events in current view")
+
+def annotate_side(fig, side_focus):
+    txt = "Showing both sides" if side_focus == "Both" else f"Showing {side_focus.lower()} side only"
+    fig.add_annotation(
+        x=0.99,
+        y=1.08,
+        xref="paper",
+        yref="paper",
+        text=txt,
+        showarrow=False,
+        xanchor="right",
+        font=dict(size=12, color="#d4e8ff"),
+        bgcolor="rgba(93,168,255,0.12)",
+        bordercolor="rgba(93,168,255,0.25)",
+        borderwidth=1,
+        borderpad=6,
+    )
+    return fig
+
 def top_insights(team_df):
     if team_df.empty:
         return []
@@ -429,16 +469,18 @@ def top_insights(team_df):
     insights.append(("Highest xG/Match", f"{best_xg['team']} create {human_val(best_xg['xg_per_match'], 3)} xG per match from corners."))
     insights.append(("Best 6-yard Targeting", f"{best_6y['team']} hit the 6-yard box on {human_pct(best_6y['six_yard_delivery_rate'])} of corners."))
     insights.append(("Most Short Corners", f"{best_short['team']} use short routines {human_pct(best_short['short_corner_rate'])} of the time."))
-    return insights
+    return insights[:4]
 
 # =========================================================
 # DATA LOAD
 # =========================================================
 @st.cache_data
 def load_data():
-    if not os.path.exists(FILE_NAME):
-        raise FileNotFoundError(f"{FILE_NAME} not found.")
-    return pd.read_excel(FILE_NAME)
+    possible_files = [FILE_NAME, "Allsvenskan - Corners 2025 (1).xlsx"]
+    for f in possible_files:
+        if os.path.exists(f):
+            return pd.read_excel(f)
+    raise FileNotFoundError(f"{FILE_NAME} not found.")
 
 @st.cache_data
 def prepare_data(raw_df):
@@ -565,13 +607,13 @@ def prepare_data(raw_df):
     )
     df["end_zone"] = df.apply(
         lambda r: zone_from_end_location(r["pass_end_location_x"], r["pass_end_location_y"]),
-        axis=1
+        axis=1,
     )
     df["is_six_yard_delivery"] = df["end_zone"].eq("6-yard box")
     df["is_penalty_area_delivery"] = df["end_zone"].eq("Penalty area")
     df["delivery_type"] = df.apply(
         lambda r: infer_delivery_type(r["pass_technique"], r["pass_height"]),
-        axis=1
+        axis=1,
     )
     df["xg_category"] = df["shot_xg"].apply(xg_category)
     df["goal_from_corner"] = df["shot_outcome"].astype(str).str.contains("goal", case=False, na=False)
@@ -580,7 +622,7 @@ def prepare_data(raw_df):
         df["event_minute"],
         bins=[-0.1, 15, 30, 45, 60, 75, 120],
         labels=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
-        right=True
+        right=True,
     ).astype(str)
 
     match_summary = (
@@ -679,14 +721,14 @@ def taker_summary(df):
 # =========================================================
 # CHARTS
 # =========================================================
-def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True):
+def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True, side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=560, half=half)
     if df_shots.empty:
-        return fig
+        return annotate_side(fig, side_focus)
 
     plot = df_shots.dropna(subset=["shot_location_x", "shot_location_y"]).copy()
     if plot.empty:
-        return fig
+        return annotate_side(fig, side_focus)
 
     plot["_xg"] = plot["shot_xg"].fillna(0)
     plot["_size"] = np.clip(plot["_xg"] * 90 + 10, 10, 36)
@@ -706,6 +748,7 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
                 text=[
                     f"<b>{r.get('Match','')}</b><br>"
                     f"Team: {r.get('corner_team','')}<br>"
+                    f"Side: {r.get('side','')}<br>"
                     f"Taker: {r.get('Taker','')}<br>"
                     f"Shooter: {r.get('Shooter','')}<br>"
                     f"xG: {0 if pd.isna(r.get('shot_xg')) else r.get('shot_xg', 0):.3f}<br>"
@@ -715,16 +758,16 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", half=True
                 hovertemplate="%{text}<extra></extra>",
             )
         )
-    return fig
+    return annotate_side(fig, side_focus)
 
-def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map"):
+def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=620, half=False)
     plot = df_events.dropna(
         subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
     ).copy()
 
     if plot.empty:
-        return fig
+        return annotate_side(fig, side_focus)
 
     legend_added = set()
     for _, row in plot.iterrows():
@@ -746,9 +789,9 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
                 text=(
                     f"<b>{row.get('Match','')}</b><br>"
                     f"Team: {row.get('corner_team','')}<br>"
+                    f"Side: {row.get('side','')}<br>"
                     f"Taker: {row.get('Taker','')}<br>"
                     f"Technique: {row.get('pass_technique','')}<br>"
-                    f"Side: {row.get('side','')}<br>"
                     f"Zone: {row.get('delivery_zone','')}<br>"
                     f"End Zone: {row.get('end_zone','')}<br>"
                     f"Outcome: {row.get('SP_outcome','')}"
@@ -756,7 +799,7 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
                 hovertemplate="%{text}<extra></extra>",
             )
         )
-    return fig
+    return annotate_side(fig, side_focus)
 
 def outcome_pie(df, title="Outcome Split"):
     if df.empty:
@@ -779,7 +822,7 @@ def team_scatter(df, x, y, size, title):
         return go.Figure()
     fig = px.scatter(
         df, x=x, y=y, size=size, text="team", hover_name="team",
-        title=title, color_discrete_sequence=[ACCENT]
+        title=title, color_discrete_sequence=[ACCENT],
     )
     fig.update_traces(textposition="top center")
     if not df[x].dropna().empty:
@@ -836,7 +879,7 @@ def taker_bar_chart(df, metric, title, top_n=12, min_corners=3):
         color=metric,
         color_continuous_scale="Blues",
         title=title,
-        hover_data=["corners", "shots", "total_xg"]
+        hover_data=["corners", "shots", "total_xg"],
     )
     fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-35)
     return figure_layout(fig, 380, title)
@@ -861,7 +904,7 @@ def rolling_shot_rate(df, window=5, title="Rolling Shot Rate"):
                 y=grp["rolling"],
                 mode="lines+markers",
                 name=str(team),
-                hovertemplate=f"<b>{team}</b><br>Match: %{{x}}<br>Rolling SR: %{{y:.1%}}<extra></extra>"
+                hovertemplate=f"<b>{team}</b><br>Match: %{{x}}<br>Rolling SR: %{{y:.1%}}<extra></extra>",
             )
         )
     fig.update_layout(
@@ -910,14 +953,13 @@ st.markdown(
     """
     <div class="hero-wrap">
         <div class="hero-title">⚽ <span>Allsvenskan</span> Set Piece Studio Pro</div>
-        <div class="hero-sub">Simplified premium corner analytics workspace — executive view, team intel, match explorer, scouting, trends, and exports.</div>
+        <div class="hero-sub">A cleaner corner analysis workspace for coaches and analysts — faster reads, clearer visuals, better side filtering.</div>
         <div>
             <span class="pill">Executive</span>
             <span class="pill">Visuals</span>
             <span class="pill">Teams</span>
             <span class="pill">Matches</span>
             <span class="pill">Scouting</span>
-            <span class="pill">Trends</span>
             <span class="pill">Exports</span>
         </div>
     </div>
@@ -950,42 +992,73 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("**Core Filters**")
+    st.markdown("**Quick Filters**")
 
     sel_team = st.selectbox("Team", ["All Teams"] + all_teams)
-    sel_takers = st.multiselect("Taker(s)", all_takers)
     sel_matches = st.multiselect("Matches", all_matches)
-
-    minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
-    minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
-    min_range = safe_range_slider("Minute Range", minute_min, minute_max)
-
-    match_corner_min = int(match_summary["total_corners"].min()) if not match_summary.empty else 0
-    match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 0
-    corner_range = safe_range_slider("Match Corner Range", match_corner_min, match_corner_max)
-
-    st.markdown("**Delivery Filters**")
-    side_filter = st.multiselect("Side", ["Right", "Left", "Unknown"], default=["Right", "Left", "Unknown"])
-    zone_filter = st.multiselect(
-        "Delivery Zone",
-        ["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"],
-        default=["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"]
-    )
-    end_zone_filter = st.multiselect(
-        "End Zone",
-        ["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"],
-        default=["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"]
+    side_focus = st.radio(
+        "Corner Side",
+        ["Both", "Left", "Right"],
+        horizontal=True,
+        help="Filter corners by the side they were taken from, and show that state on visuals.",
     )
 
-    venue_filter = st.multiselect("Home / Away", ["Home", "Away", "Unknown"], default=["Home", "Away", "Unknown"])
-    phase_filter = st.multiselect("Phase", ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"], default=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"])
-    setup_filter = st.multiselect("Defensive Setup", all_setups)
+    with st.expander("Advanced filters", expanded=False):
+        sel_takers = st.multiselect("Taker(s)", all_takers)
 
-    st.markdown("**Quick Filters**")
-    shot_only = st.checkbox("Shot outcomes only")
-    inswing_only = st.checkbox("Inswingers only")
-    outswing_only = st.checkbox("Outswingers only")
-    short_only = st.checkbox("Short corners only")
+        minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
+        minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
+        min_range = safe_range_slider("Minute Range", minute_min, minute_max)
+
+        match_corner_min = int(match_summary["total_corners"].min()) if not match_summary.empty else 0
+        match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 0
+        corner_range = safe_range_slider("Match Corner Range", match_corner_min, match_corner_max)
+
+        zone_filter = st.multiselect(
+            "Delivery Zone",
+            ["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"],
+            default=["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"],
+        )
+        end_zone_filter = st.multiselect(
+            "End Zone",
+            ["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"],
+            default=["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"],
+        )
+        venue_filter = st.multiselect(
+            "Home / Away",
+            ["Home", "Away", "Unknown"],
+            default=["Home", "Away", "Unknown"],
+        )
+        phase_filter = st.multiselect(
+            "Phase",
+            ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
+            default=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
+        )
+        setup_filter = st.multiselect("Defensive Setup", all_setups)
+
+        st.markdown("**Event type**")
+        shot_only = st.checkbox("Shot outcomes only")
+        inswing_only = st.checkbox("Inswingers only")
+        outswing_only = st.checkbox("Outswingers only")
+        short_only = st.checkbox("Short corners only")
+
+# defaults when expander state not interacted with yet
+minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
+minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
+min_range = locals().get("min_range", (minute_min, minute_max))
+match_corner_min = int(match_summary["total_corners"].min()) if not match_summary.empty else 0
+match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 0
+corner_range = locals().get("corner_range", (match_corner_min, match_corner_max))
+sel_takers = locals().get("sel_takers", [])
+zone_filter = locals().get("zone_filter", ["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"])
+end_zone_filter = locals().get("end_zone_filter", ["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"])
+venue_filter = locals().get("venue_filter", ["Home", "Away", "Unknown"])
+phase_filter = locals().get("phase_filter", ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"])
+setup_filter = locals().get("setup_filter", [])
+shot_only = locals().get("shot_only", False)
+inswing_only = locals().get("inswing_only", False)
+outswing_only = locals().get("outswing_only", False)
+short_only = locals().get("short_only", False)
 
 # =========================================================
 # FILTERS
@@ -998,11 +1071,17 @@ def apply_filters(events, matches):
     out_events = events[events["match_id"].isin(out_matches["match_id"].unique())].copy()
     out_events = out_events[out_events["Minute"].fillna(0).between(min_range[0], min_range[1])]
 
+    effective_side_filter = ["Left", "Right", "Unknown"]
+    if side_focus == "Left":
+        effective_side_filter = ["Left"]
+    elif side_focus == "Right":
+        effective_side_filter = ["Right"]
+
     filter_map = {
         "corner_team": None if sel_team == "All Teams" else [sel_team],
         "Taker": sel_takers if sel_takers else None,
         "Match": sel_matches if sel_matches else None,
-        "side": side_filter if side_filter else None,
+        "side": effective_side_filter,
         "delivery_zone": zone_filter if zone_filter else None,
         "end_zone": end_zone_filter if end_zone_filter else None,
         "venue_split": venue_filter if venue_filter else None,
@@ -1029,6 +1108,14 @@ def apply_filters(events, matches):
     return out_events, out_matches, out_teams, out_takers
 
 league_event_df, league_match_df, league_team_df, league_taker_df = apply_filters(df, match_summary)
+
+filter_chips(
+    sel_team,
+    len(sel_matches),
+    len(sel_takers),
+    side_focus,
+    venue_filter,
+)
 
 # =========================================================
 # KPI ROW
@@ -1091,22 +1178,10 @@ if page == "🏠 Executive Dashboard":
         if not league_team_df.empty:
             st.plotly_chart(
                 team_scatter(league_team_df, "shot_rate", "xg_per_match", "corners_taken", "Shot Rate vs xG/Match"),
-                use_container_width=True
+                use_container_width=True,
             )
         else:
             empty_state()
-
-    c3, c4 = st.columns(2)
-    with c3:
-        st.plotly_chart(outcome_pie(league_event_df), use_container_width=True)
-    with c4:
-        st.plotly_chart(technique_pie(league_event_df), use_container_width=True)
-
-    c5, c6 = st.columns(2)
-    with c5:
-        st.plotly_chart(cumulative_line(league_event_df, "Cumulative Corners by Team"), use_container_width=True)
-    with c6:
-        st.plotly_chart(minute_histogram(league_event_df, "Minute Distribution", color_col="corner_team"), use_container_width=True)
 
     section_header("Executive Match Board")
     if not league_match_df.empty:
@@ -1120,34 +1195,67 @@ if page == "🏠 Executive Dashboard":
         st.dataframe(
             league_match_df[show_cols].sort_values(["total_xg", "total_corners"], ascending=False).reset_index(drop=True),
             use_container_width=True,
-            height=420
+            height=420,
         )
     else:
         empty_state()
 
+    with st.expander("More breakdowns", expanded=False):
+        c3, c4 = st.columns(2)
+        with c3:
+            st.plotly_chart(outcome_pie(league_event_df), use_container_width=True)
+        with c4:
+            st.plotly_chart(technique_pie(league_event_df), use_container_width=True)
+
 elif page == "📊 Visualisation Studio":
-    tabs = st.tabs(["🎯 Shotmaps", "🏹 Deliveries", "📈 Teams", "⏱ Timing"])
+    section_header("Visualisation Studio", "Cleaner match visuals with side-aware filtering.")
+    visual_context_note(side_focus, len(league_event_df))
+
+    tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
 
     with tabs[0]:
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
         if shot_df.empty:
             empty_state("No shot location data.")
         else:
-            st.plotly_chart(shotmap_figure(shot_df, "corner_team", "Shotmap"), use_container_width=True)
+            st.plotly_chart(
+                shotmap_figure(shot_df, "corner_team", "Shotmap", side_focus=side_focus),
+                use_container_width=True,
+            )
 
     with tabs[1]:
         del_df = league_event_df.dropna(subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"])
         if del_df.empty:
             empty_state("No delivery coordinate data.")
         else:
-            st.plotly_chart(delivery_map_figure(del_df, "delivery_zone", "Delivery Map"), use_container_width=True)
+            st.plotly_chart(
+                delivery_map_figure(del_df, "delivery_zone", "Delivery Map", side_focus=side_focus),
+                use_container_width=True,
+            )
 
     with tabs[2]:
+        left_df = league_event_df[league_event_df["side"] == "Left"]
+        right_df = league_event_df[league_event_df["side"] == "Right"]
+
         c1, c2 = st.columns(2)
         with c1:
-            st.plotly_chart(team_scatter(league_team_df, "corners_per_match", "shot_rate", "corners_taken", "Corners/Match vs Shot Rate"), use_container_width=True)
+            st.markdown("#### Left-side corners")
+            if left_df.empty:
+                empty_state("No left-side corners in current filters.")
+            else:
+                st.plotly_chart(
+                    delivery_map_figure(left_df, "delivery_zone", "Left-side Delivery Map", side_focus="Left"),
+                    use_container_width=True,
+                )
         with c2:
-            st.plotly_chart(team_scatter(league_team_df, "six_yard_delivery_rate", "xg_per_match", "corners_taken", "6Y Rate vs xG/Match"), use_container_width=True)
+            st.markdown("#### Right-side corners")
+            if right_df.empty:
+                empty_state("No right-side corners in current filters.")
+            else:
+                st.plotly_chart(
+                    delivery_map_figure(right_df, "delivery_zone", "Right-side Delivery Map", side_focus="Right"),
+                    use_container_width=True,
+                )
 
     with tabs[3]:
         c1, c2 = st.columns(2)
@@ -1166,12 +1274,10 @@ elif page == "🏟 Team Analysis":
             empty_state()
     else:
         team_ev = league_event_df[league_event_df["corner_team"] == sel_team].copy()
-        team_m = league_match_df[league_match_df["match_id"].isin(team_ev["match_id"].unique())].copy()
         team_row = league_team_df[league_team_df["team"] == sel_team]
         team_takers = taker_summary(team_ev)
 
         render_kpis(team_ev)
-
         tabs = st.tabs(["📊 Overview", "🎯 Visuals", "👤 Takers", "📋 Matches", "🏆 Report Card"])
 
         with tabs[0]:
@@ -1200,12 +1306,12 @@ elif page == "🏟 Team Analysis":
                 if shot_df.empty:
                     empty_state("No shot location data.")
                 else:
-                    st.plotly_chart(shotmap_figure(shot_df, "Taker", f"Shotmap — {sel_team}"), use_container_width=True)
+                    st.plotly_chart(shotmap_figure(shot_df, "Taker", f"Shotmap — {sel_team}", side_focus=side_focus), use_container_width=True)
             with c2:
                 if del_df.empty:
                     empty_state("No delivery coordinate data.")
                 else:
-                    st.plotly_chart(delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_team}"), use_container_width=True)
+                    st.plotly_chart(delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_team}", side_focus=side_focus), use_container_width=True)
 
         with tabs[2]:
             if team_takers.empty:
@@ -1225,7 +1331,7 @@ elif page == "🏟 Team Analysis":
                     corners=("match_id", "size"),
                     shots=("led_to_shot", "sum"),
                     total_xg=("shot_xg", "sum"),
-                    fast_shots=("is_fast_shot", "sum")
+                    fast_shots=("is_fast_shot", "sum"),
                 )
                 .reset_index()
             )
@@ -1277,7 +1383,6 @@ elif page == "🔍 Match Explorer":
         match_ev = match_ev[match_ev["match_id"].isin(match_m["match_id"].unique())]
 
     render_kpis(match_ev)
-
     tabs = st.tabs(["📋 Summary", "⏱ Timeline", "🎯 Shotmap", "🏹 Delivery", "🔴 Event Feed"])
 
     with tabs[0]:
@@ -1301,14 +1406,14 @@ elif page == "🔍 Match Explorer":
         if shot_df.empty:
             empty_state("No shot data.")
         else:
-            st.plotly_chart(shotmap_figure(shot_df, "corner_team", f"Shotmap — {sel_match}"), use_container_width=True)
+            st.plotly_chart(shotmap_figure(shot_df, "corner_team", f"Shotmap — {sel_match}", side_focus=side_focus), use_container_width=True)
 
     with tabs[3]:
         del_df = match_ev.dropna(subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"])
         if del_df.empty:
             empty_state("No delivery data.")
         else:
-            st.plotly_chart(delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_match}"), use_container_width=True)
+            st.plotly_chart(delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_match}", side_focus=side_focus), use_container_width=True)
 
     with tabs[4]:
         show_cols = [
@@ -1336,14 +1441,14 @@ elif page == "👤 Scouting Center":
         if league_taker_df.empty:
             empty_state("No taker data.")
         else:
-            min_corners = st.number_input("Minimum corners", 1, 50, 5)
-            filt = league_taker_df[league_taker_df["corners"] >= min_corners]
+            min_corners_scout = st.number_input("Minimum corners", 1, 50, 5)
+            filt = league_taker_df[league_taker_df["corners"] >= min_corners_scout]
             st.dataframe(filt.reset_index(drop=True), use_container_width=True, height=460)
             c1, c2 = st.columns(2)
             with c1:
-                st.plotly_chart(taker_bar_chart(filt, "xg_per_corner", "Top Takers — xG/Corner", min_corners=min_corners), use_container_width=True)
+                st.plotly_chart(taker_bar_chart(filt, "xg_per_corner", "Top Takers — xG/Corner", min_corners=min_corners_scout), use_container_width=True)
             with c2:
-                st.plotly_chart(taker_bar_chart(filt, "shot_rate", "Top Takers — Shot Rate", min_corners=min_corners), use_container_width=True)
+                st.plotly_chart(taker_bar_chart(filt, "shot_rate", "Top Takers — Shot Rate", min_corners=min_corners_scout), use_container_width=True)
 
     with tabs[2]:
         teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
@@ -1363,11 +1468,11 @@ elif page == "👤 Scouting Center":
                 "Metric": ["Corners/Match", "Shot Rate", "xG/Match", "6Y Delivery Rate", "Short Corner Rate", "Inswinger Rate"],
                 team_a: [
                     a["corners_per_match"], a["shot_rate"], a["xg_per_match"],
-                    a["six_yard_delivery_rate"], a["short_corner_rate"], a["inswinger_rate"]
+                    a["six_yard_delivery_rate"], a["short_corner_rate"], a["inswinger_rate"],
                 ],
                 team_b: [
                     b["corners_per_match"], b["shot_rate"], b["xg_per_match"],
-                    b["six_yard_delivery_rate"], b["short_corner_rate"], b["inswinger_rate"]
+                    b["six_yard_delivery_rate"], b["short_corner_rate"], b["inswinger_rate"],
                 ],
             })
             st.dataframe(comp, use_container_width=True, height=300)
@@ -1380,13 +1485,13 @@ elif page == "👤 Scouting Center":
                 if shot_a.empty:
                     empty_state(f"No shots — {team_a}")
                 else:
-                    st.plotly_chart(shotmap_figure(shot_a, "Taker", f"Shotmap — {team_a}"), use_container_width=True)
+                    st.plotly_chart(shotmap_figure(shot_a, "Taker", f"Shotmap — {team_a}", side_focus=side_focus), use_container_width=True)
             with c4:
                 shot_b = ev_b.dropna(subset=["shot_location_x", "shot_location_y"])
                 if shot_b.empty:
                     empty_state(f"No shots — {team_b}")
                 else:
-                    st.plotly_chart(shotmap_figure(shot_b, "Taker", f"Shotmap — {team_b}"), use_container_width=True)
+                    st.plotly_chart(shotmap_figure(shot_b, "Taker", f"Shotmap — {team_b}", side_focus=side_focus), use_container_width=True)
 
     with tabs[3]:
         scout_teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
@@ -1412,13 +1517,11 @@ elif page == "👤 Scouting Center":
                     if (not dom_zone.empty and dom_zone.index[0] == "6-yard box")
                     else "Standard zonal coverage is acceptable."
                 )
-
                 short_recommendation = (
                     " Watch for short corners."
                     if r.get("short_corner_rate", 0) > 0.15
                     else ""
                 )
-
                 inswing_recommendation = (
                     " Prepare for inswinging delivery patterns."
                     if r.get("inswinger_rate", 0) > 0.30
@@ -1441,7 +1544,7 @@ elif page == "👤 Scouting Center":
                         </div>
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
 
 elif page == "📈 Trend Lab":
@@ -1516,7 +1619,7 @@ elif page == "🗂 Data Hub":
                 league_event_df.to_csv(index=False).encode(),
                 "events.csv",
                 "text/csv",
-                use_container_width=True
+                use_container_width=True,
             )
         with c2:
             st.download_button(
@@ -1524,7 +1627,7 @@ elif page == "🗂 Data Hub":
                 league_team_df.to_csv(index=False).encode(),
                 "teams.csv",
                 "text/csv",
-                use_container_width=True
+                use_container_width=True,
             )
         with c3:
             st.download_button(
@@ -1532,7 +1635,7 @@ elif page == "🗂 Data Hub":
                 league_match_df.to_csv(index=False).encode(),
                 "matches.csv",
                 "text/csv",
-                use_container_width=True
+                use_container_width=True,
             )
 
         wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df)
@@ -1542,7 +1645,7 @@ elif page == "🗂 Data Hub":
                 wb,
                 "allsvenskan_corners.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                use_container_width=True,
             )
 
 # =========================================================
@@ -1551,7 +1654,7 @@ elif page == "🗂 Data Hub":
 st.markdown(
     f"""
     <div class="footer-note">
-        ⚽ Allsvenskan Set Piece Studio Pro · Simplified build · 2025 Season · Streamlit + Plotly
+        ⚽ Allsvenskan Set Piece Studio Pro · Cleaner UX build · 2025 Season · Streamlit + Plotly
     </div>
     """,
     unsafe_allow_html=True,
