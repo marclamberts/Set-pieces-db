@@ -189,32 +189,38 @@ st.markdown(CSS, unsafe_allow_html=True)
 import plotly.graph_objects as go
 import numpy as np
 
-def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
+def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: 
         return fig
 
-    # Ensure we are using the correct column names
-    xg_col = "shot.statsbomb_xg"
-    player_col = "Shooter"
-    
-    # Check if color_col exists, fallback to shot_team_name if not
-    group_col = color_col if color_col in df_shots.columns else "shot_team_name"
+    # 1. Robust Column Discovery
+    # Finds 'shot.statsbomb_xg' or 'shot_statsbomb_xg' or anything containing 'statsbomb_xg'
+    xg_col = next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
+    # Finds the team column (usually 'pass_team_name' or 'corner_team')
+    team_col = next((c for c in df_shots.columns if "team" in c.lower()), df_shots.columns[0])
     
     plot = df_shots.copy()
-    # Size markers by xG (multiplied for visibility)
-    plot["_size"] = np.clip(plot[xg_col].fillna(0).astype(float) * 100 + 10, 10, 40)
 
-    for team, sub in plot.groupby(group_col):
+    # 2. Handle xG sizing safely
+    if xg_col:
+        # Convert to numeric just in case it's stored as a string
+        plot[xg_col] = pd.to_numeric(plot[xg_col], errors='coerce').fillna(0)
+        plot["_size"] = np.clip(plot[xg_col] * 100 + 10, 10, 40)
+    else:
+        plot["_size"] = 15 # Default size if column is missing
+
+    # 3. Plotting
+    for group, sub in plot.groupby(team_col):
         fig.add_trace(go.Scatter(
-            x=80 - sub["shot_location_y"], # Horizontal screen = Pitch width
-            y=sub["shot_location_x"],      # Vertical screen = Pitch length
+            x=80 - sub["shot_location_y"], 
+            y=sub["shot_location_x"],
             mode="markers",
-            name=str(team),
+            name=str(group),
             marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1)),
             text=[
-                f"<b>Player:</b> {r[player_col]}<br>"
-                f"<b>xG:</b> {float(r[xg_col]):.3f}<br>"
+                f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
+                f"<b>xG:</b> {r[xg_col]:.3f}<br>" if xg_col else "<b>xG:</b> N/A<br>"
                 f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
