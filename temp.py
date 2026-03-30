@@ -185,75 +185,110 @@ div[data-testid="stDataFrame"] {{
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-
-import plotly.graph_objects as go
-import numpy as np
-
 import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 
-def shotmap_figure(df_shots, title="Shotmap", side_focus="Both"):
-    # Initialize Vertical Pitch (Goal at Y=120)
+# Helper to find columns safely even with dots/underscores/spaces
+def safe_col(df, preferred_list):
+    for pref in preferred_list:
+        if pref in df.columns:
+            return pref
+        # Try case-insensitive and symbol variations
+        normalized_cols = {c.lower().replace('.', '_').strip(): c for c in df.columns}
+        norm_pref = pref.lower().replace('.', '_').strip()
+        if norm_pref in normalized_cols:
+            return normalized_cols[norm_pref]
+    return None
+
+def draw_pitch(fig, title=None, height=700, half=False):
+    """Draws a vertical pitch with goal at the top (Y=120)"""
+    fig.update_xaxes(range=[0, 80], visible=False)
+    fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
+    
+    # Pitch geometry
+    shapes = [
+        dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color="white", width=2)),
+        dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)),
+        dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)), # Box
+        dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)), # 6yd
+    ]
+    if not half:
+        shapes += [
+            dict(type="rect", x0=18, y0=0, x1=62, y1=18, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=30, y0=0, x1=50, y1=6, line=dict(color="white", width=1.5)),
+        ]
+
+    fig.update_layout(
+        title=title, height=height, template="plotly_dark",
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
+        shapes=shapes,
+    )
+    return fig
+
+def shotmap_figure(df_shots, color_col="pass_team_name", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
-    if df_shots.empty: 
-        return fig
+    if df_shots.empty: return fig
 
-    # Robust Column Discovery
-    xg_col = next((c for c in df_shots.columns if "statsbomb_xg" in c), None)
-    team_col = next((c for c in df_shots.columns if "team" in c.lower()), "pass_team_name")
+    # Safely identify columns
+    xg_key = safe_col(df_shots, ["shot.statsbomb_xg", "shot_statsbomb_xg", "shot_xg"])
+    team_key = safe_col(df_shots, [color_col, "pass_team_name", "shot_team_name", "Team"])
+    shooter_key = safe_col(df_shots, ["Shooter", "player_name", "player"])
+    outcome_key = safe_col(df_shots, ["SP_outcome", "shot.outcome.name", "outcome"])
+
+    plot_df = df_shots.copy()
     
-    if not xg_col:
-        return fig 
-
-    # --- FILTER: Only plot shots with xG > 0 ---
-    plot = df_shots.copy()
-    plot[xg_col] = pd.to_numeric(plot[xg_col], errors='coerce').fillna(0)
-    plot = plot[plot[xg_col] > 0]
+    # 1. Ensure xG is numeric and filter for xG > 0
+    if xg_key:
+        plot_df[xg_key] = pd.to_numeric(plot_df[xg_key], errors='coerce').fillna(0)
+        plot_df = plot_df[plot_df[xg_key] > 0]
     
-    if plot.empty:
-        return fig
+    if plot_df.empty: return fig
 
-    # Marker Sizing based on xG
-    plot["_size"] = np.clip(plot[xg_col] * 100 + 10, 10, 40)
-
-    for group, sub in plot.groupby(team_col):
+    # 2. Add Scatters
+    for team, sub in plot_df.groupby(team_key or df_shots.columns[0]):
+        # Marker sizing based on xG
+        sizes = np.clip(sub[xg_key].values * 100 + 10, 10, 40) if xg_key else [15]*len(sub)
+        
         fig.add_trace(go.Scatter(
             x=80 - sub["shot_location_y"], 
             y=sub["shot_location_x"],
             mode="markers",
-            name=str(group),
-            marker=dict(size=sub["_size"], opacity=0.7, line=dict(color="white", width=1.5)),
+            name=str(team),
+            marker=dict(size=sizes, opacity=0.7, line=dict(color="white", width=1)),
             text=[
-                f"<b>Player:</b> {r.get('Shooter', 'N/A')}<br>"
-                f"<b>xG:</b> {r[xg_col]:.3f}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
+                f"<b>Player:</b> {r.get(shooter_key, 'N/A')}<br>"
+                f"<b>xG:</b> {r.get(xg_key, 0):.3f}<br>"
+                f"<b>Outcome:</b> {r.get(outcome_key, 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
         ))
     return fig
 
-def delivery_map_figure(df_events, title="Delivery Landing Points"):
+def delivery_map_figure(df_events, color_col="pass_team_name", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     
-    # Filter for corners with landing coordinates
-    plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
-    if plot.empty: 
-        return fig
+    # Filter for coordinates
+    plot_df = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
+    if plot_df.empty: return fig
 
-    team_col = next((c for c in plot.columns if "team" in c.lower()), "pass_team_name")
+    # Safely identify columns
+    team_key = safe_col(plot_df, [color_col, "pass_team_name", "Team"])
+    taker_key = safe_col(plot_df, ["Taker", "player_name"])
+    outcome_key = safe_col(plot_df, ["SP_outcome", "pass.outcome.name"])
 
-    for group, sub in plot.groupby(team_col):
+    for team, sub in plot_df.groupby(team_key or plot_df.columns[0]):
         fig.add_trace(go.Scatter(
             x=80 - sub["pass_end_location_y"], 
             y=sub["pass_end_location_x"],
-            mode="markers", # <--- DOTS ONLY (No lines)
-            name=str(group),
+            mode="markers", # <--- ONLY MARKERS (No lines)
+            name=str(team),
             marker=dict(size=14, opacity=0.8, line=dict(width=1, color='white')),
             text=[
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}<br>"
-                f"<b>Taker:</b> {r.get('Taker', 'N/A')}<br>"
+                f"<b>Taker:</b> {r.get(taker_key, 'N/A')}<br>"
+                f"<b>Outcome:</b> {r.get(outcome_key, 'N/A')}<br>"
                 f"<b>Match:</b> {r.get('Match', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
@@ -1264,22 +1299,24 @@ elif page == "📊 Visualisation Studio":
     tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
 
     with tabs[0]:
+        # Filter rows with shot locations first
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
         if shot_df.empty:
             st.info("No shot data available.")
         else:
             st.plotly_chart(
-                shotmap_figure(shot_df, title="Shot Locations & xG", side_focus=side_focus),
+                shotmap_figure(shot_df, color_col="pass_team_name", title="Shotmap (xG > 0)", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[1]:
+        # Filter rows with delivery end locations
         delivery_df = league_event_df.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
         if delivery_df.empty:
-            st.info("No delivery landing data available.")
+            st.info("No delivery data available.")
         else:
             st.plotly_chart(
-                delivery_map_figure(delivery_df, title="Delivery Landing Points", side_focus=side_focus),
+                delivery_map_figure(delivery_df, color_col="pass_team_name", title="Delivery Landing Points", side_focus=side_focus),
                 use_container_width=True,
             )
     with tabs[2]:
