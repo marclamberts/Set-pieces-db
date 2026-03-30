@@ -191,7 +191,6 @@ import pandas as pd
 
 def draw_pitch(fig, title=None, height=600, half=True):
     """Draws a vertical pitch with goal at top (Y=120)."""
-    # X axis is width (0-80), Y axis is length (0-120)
     y_min = 60 if half else 0
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[y_min, 120], visible=False, scaleanchor="x", scaleratio=1)
@@ -205,7 +204,7 @@ def draw_pitch(fig, title=None, height=600, half=True):
         dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
         # Penalty Spot
         dict(type="circle", x0=39.6, y0=107.6, x1=40.4, y1=108.4, fillcolor="white", line=dict(color="white")),
-        # Goal line
+        # Goal line (Attacking Goal)
         dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="#00FF00", width=4)),
     ]
     
@@ -219,50 +218,65 @@ def draw_pitch(fig, title=None, height=600, half=True):
 
 def shotmap_figure(df_shots, title="Shotmap", side_focus="Both", color_col="pass_team_name"):
     """
-    Fixed arguments to prevent TypeErrors.
-    Filters for xG > 0 and displays Player + xG.
+    Robust Shotmap that handles different column naming styles automatically.
     """
+    # 1. Start with the pitch
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty: 
         return fig
 
-    # Exact column names from your CSV
-    xg_col = "shot.statsbomb_xg"
-    x_col = "shot_location_x"
-    y_col = "shot_location_y"
-    player_col = "Shooter"
+    # 2. Normalize columns to be robust against KeyError
+    # This turns 'shot.statsbomb_xg' into 'shot_statsbomb_xg'
+    df_clean = df_shots.copy()
+    df_clean.columns = [c.replace('.', '_').replace(' ', '_').lower().strip() for c in df_clean.columns]
     
-    # Use color_col if it exists in the data, otherwise fallback to pass_team_name
-    group_col = color_col if color_col in df_shots.columns else "pass_team_name"
+    # 3. Find the normalized column names
+    # Mapping our logical needs to whatever the CSV actually has
+    xg_key = 'shot_statsbomb_xg'
+    x_key = 'shot_location_x'
+    y_key = 'shot_location_y'
+    shooter_key = 'shooter'
+    team_key = color_col.lower().replace('.', '_').replace(' ', '_')
+    
+    # Check if team_key exists in normalized columns, else fallback
+    if team_key not in df_clean.columns:
+        team_key = 'pass_team_name' if 'pass_team_name' in df_clean.columns else df_clean.columns[0]
 
-    # 1. Clean Data: Ensure numeric xG and filter for xG > 0
-    plot_df = df_shots.dropna(subset=[x_col, y_col, xg_col]).copy()
-    plot_df[xg_col] = pd.to_numeric(plot_df[xg_col], errors='coerce').fillna(0)
-    plot_df = plot_df[plot_df[xg_col] > 0]
+    # 4. Clean and Filter
+    # Ensure xG is numeric and only keep shots with actual xG
+    if xg_key in df_clean.columns:
+        df_clean[xg_key] = pd.to_numeric(df_clean[xg_key], errors='coerce').fillna(0)
+        plot_df = df_clean[df_clean[xg_key] > 0].copy()
+    else:
+        # If xG column is somehow missing entirely, show nothing to avoid crash
+        return fig
+
+    # Ensure coordinates exist
+    plot_df = plot_df.dropna(subset=[x_key, y_key])
 
     if plot_df.empty:
         return fig
 
-    # 2. Plotting
-    for team, sub in plot_df.groupby(group_col):
+    # 5. Plotting
+    for team, sub in plot_df.groupby(team_key):
         # Size circles by xG (larger xG = larger dot)
-        sizes = np.clip(sub[xg_col].values * 150 + 10, 10, 55)
+        sizes = np.clip(sub[xg_key].values * 150 + 10, 10, 55)
 
         fig.add_trace(go.Scatter(
-            x=sub[y_col], # Width
-            y=sub[x_col], # Length
+            x=sub[y_key], # Width on X-axis (0-80)
+            y=sub[x_key], # Length on Y-axis (attacking at 120)
             mode="markers",
             name=str(team),
             marker=dict(
                 size=sizes, 
-                opacity=0.7, 
+                opacity=0.75, 
                 line=dict(color="white", width=1),
                 symbol="circle"
             ),
             text=[
-                f"<b>Player:</b> {r[player_col]}<br>"
-                f"<b>xG:</b> {r[xg_col]:.3f}<br>"
-                f"<b>Outcome:</b> {r.get('SP_outcome', 'N/A')}"
+                f"<b>Player:</b> {r.get(shooter_key, 'N/A')}<br>"
+                f"<b>xG:</b> {r.get(xg_key, 0):.3f}<br>"
+                f"<b>Outcome:</b> {r.get('sp_outcome', 'N/A')}"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>"
