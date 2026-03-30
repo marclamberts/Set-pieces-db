@@ -395,9 +395,10 @@ def figure_layout(fig, height=420, title=None):
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False)
     return fig
 
-def draw_pitch(fig, title=None, height=560, half=False):
-    fig.update_xaxes(range=[55 if half else 0, 120], visible=False)
-    fig.update_yaxes(range=[0, 80], visible=False, scaleanchor="x", scaleratio=1)
+def draw_pitch(fig, title=None, height=700, half=False):
+    # Vertical orientation: X is Width (0-80), Y is Length (0-120)
+    fig.update_xaxes(range=[0, 80], visible=False)
+    fig.update_yaxes(range=[60 if half else 0, 120], visible=False, scaleanchor="x", scaleratio=1)
     fig.update_layout(
         title=title,
         height=height,
@@ -407,11 +408,16 @@ def draw_pitch(fig, title=None, height=560, half=False):
         font=dict(color="white"),
         hoverlabel=dict(bgcolor="#0d1c31", font_color="white"),
         shapes=[
-            dict(type="rect", x0=0, y0=0, x1=120, y1=80, line=dict(color=PITCH_LINE, width=2)),
-            dict(type="line", x0=60, y0=0, x1=60, y1=80, line=dict(color=PITCH_LINE, width=1.5)),
-            dict(type="circle", x0=50, y0=30, x1=70, y1=50, line=dict(color=PITCH_LINE, width=1.5)),
-            dict(type="rect", x0=102, y0=18, x1=120, y1=62, line=dict(color=PITCH_LINE, width=1.5)),
-            dict(type="rect", x0=114, y0=30, x1=120, y1=50, line=dict(color=PITCH_LINE, width=1.5)),
+            # Outer boundary
+            dict(type="rect", x0=0, y0=0, x1=80, y1=120, line=dict(color=PITCH_LINE, width=2)),
+            # Halfway line
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color=PITCH_LINE, width=1.5)),
+            # Center circle
+            dict(type="circle", x0=30, y0=50, x1=50, y1=70, line=dict(color=PITCH_LINE, width=1.5)),
+            # Penalty area
+            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color=PITCH_LINE, width=1.5)),
+            # 6-yard box
+            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color=PITCH_LINE, width=1.5)),
         ],
     )
     return fig
