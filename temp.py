@@ -22,6 +22,8 @@ st.set_page_config(
 )
 
 FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
+HOPS_FILE_NAME = "duel_hops_rating_summary.xlsx"
+
 LOGIN_NAME = "Admin"
 LOGIN_PASSWORD = "Football2026"
 
@@ -656,6 +658,59 @@ def load_data():
     raise FileNotFoundError(f"{FILE_NAME} not found.")
 
 @st.cache_data
+def load_hops_data():
+    possible_files = [HOPS_FILE_NAME, "/mnt/data/duel_hops_rating_summary.xlsx"]
+    hops = None
+    for f in possible_files:
+        if os.path.exists(f):
+            hops = pd.read_excel(f)
+            break
+
+    if hops is None:
+        raise FileNotFoundError(f"{HOPS_FILE_NAME} not found.")
+
+    hops.columns = [str(c).strip() for c in hops.columns]
+
+    player_col = find_col(hops, ["Player"])
+    team_col = find_col(hops, ["Team"])
+    rating_col = find_col(hops, ["Rating"])
+
+    missing = []
+    if player_col is None:
+        missing.append("Player")
+    if team_col is None:
+        missing.append("Team")
+    if rating_col is None:
+        missing.append("Rating")
+
+    if missing:
+        raise ValueError(f"HOPS file missing required columns: {missing}")
+
+    hops = hops.rename(columns={
+        player_col: "Player",
+        team_col: "Team",
+        rating_col: "Rating",
+    })
+
+    hops = hops[["Player", "Team", "Rating"]].copy()
+    hops["Player"] = hops["Player"].astype(str).str.strip()
+    hops["Team"] = hops["Team"].astype(str).str.strip()
+    hops["Rating"] = pd.to_numeric(hops["Rating"], errors="coerce")
+    hops = hops.dropna(subset=["Player", "Team", "Rating"]).reset_index(drop=True)
+
+    rating_std = hops["Rating"].std()
+    if pd.isna(rating_std) or rating_std == 0:
+        hops["z_score"] = 0.0
+    else:
+        hops["z_score"] = (hops["Rating"] - hops["Rating"].mean()) / rating_std
+
+    hops["Percentile"] = hops["Rating"].rank(pct=True) * 100
+    hops = hops.sort_values(["Rating", "Player"], ascending=[False, True]).reset_index(drop=True)
+    hops["Rank"] = np.arange(1, len(hops) + 1)
+
+    return hops
+
+@st.cache_data
 def prepare_data(raw_df):
     df = raw_df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -877,7 +932,7 @@ def taker_summary(df):
 # =========================================================
 # EXPORTS
 # =========================================================
-def download_excel_workbook(events_df, team_df, match_df, taker_df):
+def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df):
     buf = BytesIO()
     try:
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -885,6 +940,7 @@ def download_excel_workbook(events_df, team_df, match_df, taker_df):
             team_df.to_excel(writer,   sheet_name="Teams",   index=False)
             match_df.to_excel(writer,  sheet_name="Matches", index=False)
             taker_df.to_excel(writer,  sheet_name="Takers",  index=False)
+            hops_df.to_excel(writer,   sheet_name="HOPS",    index=False)
         return buf.getvalue()
     except Exception:
         return None
@@ -895,6 +951,7 @@ def download_excel_workbook(events_df, team_df, match_df, taker_df):
 try:
     raw_df = load_data()
     df, match_summary = prepare_data(raw_df)
+    hops_df = load_hops_data()
 except Exception as e:
     st.error("Failed to load data.")
     st.exception(e)
@@ -914,6 +971,7 @@ st.markdown(
             <span class="pill">Teams</span>
             <span class="pill">Matches</span>
             <span class="pill">Scouting</span>
+            <span class="pill">HOPS</span>
             <span class="pill">Exports</span>
         </div>
     </div>
@@ -938,6 +996,7 @@ with st.sidebar:
         "🔍 Match Explorer",
         "👤 Scouting Center",
         "📈 Trend Lab",
+        "🦘 HOPS",
         "🗂 Data Hub",
     ])
     st.markdown("---")
@@ -1042,7 +1101,6 @@ def apply_filters(events, matches, team_override="__USE_SELECTED_TEAM__"):
 
 league_event_df, league_match_df, league_team_df, league_taker_df = apply_filters(df, match_summary)
 
-# comparison set for percentiles: same filters, but no selected-team restriction
 comparison_event_df, comparison_match_df, comparison_team_df, comparison_taker_df = apply_filters(
     df, match_summary, team_override=None
 )
@@ -1507,8 +1565,131 @@ elif page == "📈 Trend Lab":
         else:
             empty_state("Not enough data for chi-square test.")
 
+elif page == "🦘 HOPS":
+    section_header("HOPS", "Player duel HOPS ratings based on the uploaded summary workbook.")
+
+    hops_view = hops_df.copy()
+
+    if sel_team != "All Teams":
+        hops_view = hops_view[hops_view["Team"] == sel_team]
+
+    if hops_view.empty:
+        empty_state("No HOPS data for the current filters.")
+    else:
+        avg_rating = hops_view["Rating"].mean()
+        top_rating = hops_view["Rating"].max()
+        top_player = hops_view.loc[hops_view["Rating"].idxmax(), "Player"]
+        unique_players = hops_view["Player"].nunique()
+        unique_teams = hops_view["Team"].nunique()
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            metric_card("Players", f"{unique_players:,}", "In current view")
+        with c2:
+            metric_card("Teams", f"{unique_teams:,}", "Represented")
+        with c3:
+            metric_card("Avg Rating", f"{avg_rating:.3f}", "Mean HOPS")
+        with c4:
+            metric_card("Best Rating", f"{top_rating:.3f}", "Top score")
+        with c5:
+            metric_card("Top Player", top_player, "Highest HOPS")
+
+        tabs = st.tabs(["🏅 Rankings", "📊 Team View", "🔍 Player Lookup"])
+
+        with tabs[0]:
+            rank_df = hops_view.copy()
+            rank_df["Percentile"] = rank_df["Percentile"].map(lambda x: f"{x:.1f}")
+            st.dataframe(
+                rank_df[["Rank", "Player", "Team", "Rating", "Percentile"]].reset_index(drop=True),
+                use_container_width=True,
+                height=560,
+            )
+
+            top_n = st.slider("Top players to display", 5, min(50, len(hops_view)), min(20, len(hops_view)), key="hops_top_n")
+            plot_df = hops_view.head(top_n).sort_values("Rating", ascending=True)
+
+            fig = px.bar(
+                plot_df,
+                x="Rating",
+                y="Player",
+                color="Team",
+                orientation="h",
+                hover_data=["Rank"],
+                title=f"Top {top_n} HOPS Ratings",
+                color_discrete_sequence=QUAL_PALETTE,
+            )
+            st.plotly_chart(figure_layout(fig, 560, f"Top {top_n} HOPS Ratings"), use_container_width=True)
+
+        with tabs[1]:
+            team_hops = (
+                hops_view.groupby("Team", dropna=False)
+                .agg(
+                    players=("Player", "nunique"),
+                    avg_rating=("Rating", "mean"),
+                    max_rating=("Rating", "max"),
+                    median_rating=("Rating", "median"),
+                )
+                .reset_index()
+                .sort_values(["avg_rating", "max_rating"], ascending=False)
+            )
+
+            st.dataframe(team_hops, use_container_width=True, height=420)
+
+            fig = px.scatter(
+                team_hops,
+                x="players",
+                y="avg_rating",
+                size="max_rating",
+                text="Team",
+                hover_name="Team",
+                title="Team HOPS Profile",
+                color_discrete_sequence=[ACCENT],
+            )
+            fig.update_traces(textposition="top center")
+            st.plotly_chart(figure_layout(fig, 440, "Team HOPS Profile"), use_container_width=True)
+
+        with tabs[2]:
+            player_options = sorted(hops_view["Player"].unique().tolist())
+            selected_player = st.selectbox("Select player", player_options, key="hops_player_select")
+
+            player_row = hops_view[hops_view["Player"] == selected_player]
+            if player_row.empty:
+                empty_state("Player not found.")
+            else:
+                r = player_row.iloc[0]
+                team_pool = hops_df[hops_df["Team"] == r["Team"]].copy()
+
+                team_rank = team_pool.sort_values("Rating", ascending=False).reset_index(drop=True)
+                team_rank["Team Rank"] = team_rank.index + 1
+                team_rank_val = int(team_rank.loc[team_rank["Player"] == selected_player, "Team Rank"].iloc[0])
+
+                league_pct = percentile_rank(hops_df["Rating"], r["Rating"])
+
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    metric_card("Player", r["Player"], r["Team"])
+                with c2:
+                    metric_card("Rating", f"{r['Rating']:.3f}", "HOPS")
+                with c3:
+                    metric_card("League Percentile", f"{league_pct:.0f}th", "Among all players")
+                with c4:
+                    metric_card("Team Rank", f"#{team_rank_val}", f"Within {r['Team']}")
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                nearby = hops_df.copy()
+                nearby["gap"] = (nearby["Rating"] - r["Rating"]).abs()
+                nearby = nearby.sort_values(["gap", "Rating"], ascending=[True, False]).head(8)
+
+                st.markdown("#### Similar ratings")
+                st.dataframe(
+                    nearby[["Player", "Team", "Rating", "Rank"]].reset_index(drop=True),
+                    use_container_width=True,
+                    height=320,
+                )
+
 elif page == "🗂 Data Hub":
-    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "⬇ Downloads"])
+    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "🦘 HOPS", "⬇ Downloads"])
 
     with tabs[0]:
         st.dataframe(league_event_df.reset_index(drop=True), use_container_width=True, height=600)
@@ -1518,16 +1699,21 @@ elif page == "🗂 Data Hub":
         st.dataframe(league_match_df.reset_index(drop=True), use_container_width=True, height=600)
     with tabs[3]:
         st.dataframe(league_taker_df.reset_index(drop=True), use_container_width=True, height=600)
-
     with tabs[4]:
-        c1, c2, c3 = st.columns(3)
+        st.dataframe(hops_df.reset_index(drop=True), use_container_width=True, height=600)
+
+    with tabs[5]:
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.download_button("⬇ Events CSV", league_event_df.to_csv(index=False).encode(), "events.csv", "text/csv", use_container_width=True)
         with c2:
             st.download_button("⬇ Teams CSV", league_team_df.to_csv(index=False).encode(), "teams.csv", "text/csv", use_container_width=True)
         with c3:
             st.download_button("⬇ Matches CSV", league_match_df.to_csv(index=False).encode(), "matches.csv", "text/csv", use_container_width=True)
-        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df)
+        with c4:
+            st.download_button("⬇ HOPS CSV", hops_df.to_csv(index=False).encode(), "hops.csv", "text/csv", use_container_width=True)
+
+        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df, hops_df)
         if wb:
             st.download_button(
                 "⬇ Full Excel Workbook", wb, "allsvenskan_corners.xlsx",
