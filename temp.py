@@ -23,6 +23,7 @@ st.set_page_config(
 
 FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
 HOPS_FILE_NAME = "duel_hops_rating_summary.xlsx"
+DELAY_FILE_NAME = "corner_delays.xlsx"
 
 LOGIN_NAME = "Admin"
 LOGIN_PASSWORD = "Football2026"
@@ -711,6 +712,52 @@ def load_hops_data():
     return hops
 
 @st.cache_data
+def load_delay_data():
+    possible_files = [DELAY_FILE_NAME, "/mnt/data/corner_delays.xlsx"]
+    delay_summary = None
+
+    for f in possible_files:
+        if os.path.exists(f):
+            try:
+                delay_summary = pd.read_excel(f, sheet_name="Summary")
+                break
+            except Exception:
+                continue
+
+    if delay_summary is None:
+        return pd.DataFrame()
+
+    delay_summary.columns = [str(c).strip() for c in delay_summary.columns]
+
+    expected_cols = [
+        "match", "corners_found", "corners_matched",
+        "avg_delay_sec", "median_delay_sec", "min_delay_sec", "max_delay_sec"
+    ]
+    for c in expected_cols:
+        if c not in delay_summary.columns:
+            delay_summary[c] = np.nan
+
+    for c in ["corners_found", "corners_matched", "avg_delay_sec", "median_delay_sec", "min_delay_sec", "max_delay_sec"]:
+        delay_summary[c] = pd.to_numeric(delay_summary[c], errors="coerce")
+
+    delay_summary["match"] = delay_summary["match"].astype(str).str.strip()
+    delay_summary["match_label"] = (
+        delay_summary["match"]
+        .str.replace(".csv.gz", "", regex=False)
+        .str.replace("events_match_", "", regex=False)
+    )
+
+    delay_summary["match_rate"] = (
+        delay_summary["corners_matched"] / delay_summary["corners_found"].replace(0, np.nan)
+    )
+
+    return delay_summary.sort_values(
+        ["avg_delay_sec", "median_delay_sec"],
+        ascending=[False, False],
+        na_position="last"
+    ).reset_index(drop=True)
+
+@st.cache_data
 def prepare_data(raw_df):
     df = raw_df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -932,7 +979,7 @@ def taker_summary(df):
 # =========================================================
 # EXPORTS
 # =========================================================
-def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df):
+def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df, delay_df):
     buf = BytesIO()
     try:
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -941,6 +988,7 @@ def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df):
             match_df.to_excel(writer,  sheet_name="Matches", index=False)
             taker_df.to_excel(writer,  sheet_name="Takers",  index=False)
             hops_df.to_excel(writer,   sheet_name="HOPS",    index=False)
+            delay_df.to_excel(writer,  sheet_name="Delay",   index=False)
         return buf.getvalue()
     except Exception:
         return None
@@ -952,6 +1000,7 @@ try:
     raw_df = load_data()
     df, match_summary = prepare_data(raw_df)
     hops_df = load_hops_data()
+    delay_df = load_delay_data()
 except Exception as e:
     st.error("Failed to load data.")
     st.exception(e)
@@ -971,6 +1020,7 @@ st.markdown(
             <span class="pill">Teams</span>
             <span class="pill">Matches</span>
             <span class="pill">Scouting</span>
+            <span class="pill">Delay</span>
             <span class="pill">HOPS</span>
             <span class="pill">Exports</span>
         </div>
@@ -996,6 +1046,7 @@ with st.sidebar:
         "🔍 Match Explorer",
         "👤 Scouting Center",
         "📈 Trend Lab",
+        "⏱ Delay Time",
         "🦘 HOPS",
         "🗂 Data Hub",
     ])
@@ -1565,6 +1616,155 @@ elif page == "📈 Trend Lab":
         else:
             empty_state("Not enough data for chi-square test.")
 
+elif page == "⏱ Delay Time":
+    section_header("Delay Time", "Delay between detected corner events and matched events from the uploaded delay workbook.")
+
+    if delay_df.empty:
+        empty_state("No delay workbook data found.")
+    else:
+        valid_delay = delay_df.dropna(subset=["avg_delay_sec", "median_delay_sec"]).copy()
+
+        total_matches = len(delay_df)
+        matched_matches = int(delay_df["corners_matched"].fillna(0).gt(0).sum())
+        total_found = int(delay_df["corners_found"].fillna(0).sum())
+        total_matched = int(delay_df["corners_matched"].fillna(0).sum())
+
+        avg_delay = valid_delay["avg_delay_sec"].mean() if not valid_delay.empty else np.nan
+        median_delay = valid_delay["median_delay_sec"].median() if not valid_delay.empty else np.nan
+        max_delay = valid_delay["max_delay_sec"].max() if "max_delay_sec" in valid_delay.columns and not valid_delay.empty else np.nan
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        with c1:
+            metric_card("Matches", f"{total_matches:,}", "Rows in summary")
+        with c2:
+            metric_card("Matched Matches", f"{matched_matches:,}", "With matched corners")
+        with c3:
+            metric_card("Corners Found", f"{total_found:,}", "Detected corners")
+        with c4:
+            metric_card("Corners Matched", f"{total_matched:,}", "Matched corners")
+        with c5:
+            metric_card("Avg Delay", human_val(avg_delay, 2) if not pd.isna(avg_delay) else "—", "Seconds")
+        with c6:
+            metric_card("Max Delay", human_val(max_delay, 2) if not pd.isna(max_delay) else "—", "Seconds")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        tabs = st.tabs(["📊 Overview", "📈 Delay Charts", "📋 Match Table"])
+
+        with tabs[0]:
+            c1, c2 = st.columns(2)
+
+            with c1:
+                if valid_delay.empty:
+                    empty_state("No valid delay values available.")
+                else:
+                    fig = px.histogram(
+                        valid_delay,
+                        x="avg_delay_sec",
+                        nbins=20,
+                        title="Average Delay Distribution",
+                        color_discrete_sequence=[ACCENT],
+                    )
+                    fig.update_traces(opacity=0.85)
+                    st.plotly_chart(
+                        figure_layout(fig, 380, "Average Delay Distribution"),
+                        use_container_width=True,
+                    )
+
+            with c2:
+                if valid_delay.empty:
+                    empty_state("No valid delay values available.")
+                else:
+                    fig = px.scatter(
+                        valid_delay,
+                        x="corners_found",
+                        y="avg_delay_sec",
+                        size="corners_matched",
+                        hover_name="match_label",
+                        title="Delay vs Corners Found",
+                        color_discrete_sequence=[ACCENT],
+                    )
+                    st.plotly_chart(
+                        figure_layout(fig, 380, "Delay vs Corners Found"),
+                        use_container_width=True,
+                    )
+
+            if not valid_delay.empty:
+                top_slowest = valid_delay.sort_values("avg_delay_sec", ascending=False).head(3)
+                cols = st.columns(min(3, len(top_slowest)))
+
+                for i, (_, row) in enumerate(top_slowest.iterrows()):
+                    with cols[i]:
+                        insight_box(
+                            f"Slowest Match #{i+1}",
+                            f"{row['match_label']}<br>"
+                            f"Avg: <b>{human_val(row['avg_delay_sec'], 2)}s</b><br>"
+                            f"Median: <b>{human_val(row['median_delay_sec'], 2)}s</b><br>"
+                            f"Matched: <b>{int(row['corners_matched']) if not pd.isna(row['corners_matched']) else 0}</b>"
+                        )
+
+        with tabs[1]:
+            if valid_delay.empty:
+                empty_state("No valid delay values available.")
+            else:
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    plot_df = valid_delay.sort_values("avg_delay_sec", ascending=False).head(20)
+                    fig = px.bar(
+                        plot_df,
+                        x="match_label",
+                        y="avg_delay_sec",
+                        hover_data=["median_delay_sec", "min_delay_sec", "max_delay_sec", "corners_matched"],
+                        title="Top 20 Matches by Average Delay",
+                        color="avg_delay_sec",
+                        color_continuous_scale="Blues",
+                    )
+                    fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-40)
+                    st.plotly_chart(
+                        figure_layout(fig, 420, "Top 20 Matches by Average Delay"),
+                        use_container_width=True,
+                    )
+
+                with c2:
+                    melt_cols = [c for c in ["min_delay_sec", "median_delay_sec", "avg_delay_sec", "max_delay_sec"] if c in valid_delay.columns]
+                    long_df = valid_delay[["match_label"] + melt_cols].melt(
+                        id_vars="match_label",
+                        value_vars=melt_cols,
+                        var_name="metric",
+                        value_name="seconds",
+                    ).dropna()
+
+                    fig = px.box(
+                        long_df,
+                        x="metric",
+                        y="seconds",
+                        title="Delay Metric Spread",
+                        color="metric",
+                        color_discrete_sequence=QUAL_PALETTE,
+                    )
+                    st.plotly_chart(
+                        figure_layout(fig, 420, "Delay Metric Spread"),
+                        use_container_width=True,
+                    )
+
+        with tabs[2]:
+            show_cols = [c for c in [
+                "match_label", "corners_found", "corners_matched",
+                "match_rate", "avg_delay_sec", "median_delay_sec",
+                "min_delay_sec", "max_delay_sec"
+            ] if c in delay_df.columns]
+
+            table_df = delay_df[show_cols].copy()
+            if "match_rate" in table_df.columns:
+                table_df["match_rate"] = table_df["match_rate"].map(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—")
+
+            st.dataframe(
+                table_df.reset_index(drop=True),
+                use_container_width=True,
+                height=520,
+            )
+
 elif page == "🦘 HOPS":
     section_header("HOPS", "Player duel HOPS ratings based on the uploaded summary workbook.")
 
@@ -1689,7 +1889,7 @@ elif page == "🦘 HOPS":
                 )
 
 elif page == "🗂 Data Hub":
-    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "🦘 HOPS", "⬇ Downloads"])
+    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "🦘 HOPS", "⏱ Delay", "⬇ Downloads"])
 
     with tabs[0]:
         st.dataframe(league_event_df.reset_index(drop=True), use_container_width=True, height=600)
@@ -1701,9 +1901,11 @@ elif page == "🗂 Data Hub":
         st.dataframe(league_taker_df.reset_index(drop=True), use_container_width=True, height=600)
     with tabs[4]:
         st.dataframe(hops_df.reset_index(drop=True), use_container_width=True, height=600)
-
     with tabs[5]:
-        c1, c2, c3, c4 = st.columns(4)
+        st.dataframe(delay_df.reset_index(drop=True), use_container_width=True, height=600)
+
+    with tabs[6]:
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.download_button("⬇ Events CSV", league_event_df.to_csv(index=False).encode(), "events.csv", "text/csv", use_container_width=True)
         with c2:
@@ -1712,8 +1914,10 @@ elif page == "🗂 Data Hub":
             st.download_button("⬇ Matches CSV", league_match_df.to_csv(index=False).encode(), "matches.csv", "text/csv", use_container_width=True)
         with c4:
             st.download_button("⬇ HOPS CSV", hops_df.to_csv(index=False).encode(), "hops.csv", "text/csv", use_container_width=True)
+        with c5:
+            st.download_button("⬇ Delay CSV", delay_df.to_csv(index=False).encode(), "delay.csv", "text/csv", use_container_width=True)
 
-        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df, hops_df)
+        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df, hops_df, delay_df)
         if wb:
             st.download_button(
                 "⬇ Full Excel Workbook", wb, "allsvenskan_corners.xlsx",
