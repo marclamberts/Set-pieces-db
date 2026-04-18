@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-FILE_NAME = "Allsvenskan - Corners 2025.xlsx"
+FILE_NAME = "SWE SP.xlsx"
 HOPS_FILE_NAME = "duel_hops_rating_summary.xlsx"
 DELAY_FILE_NAME = "corner_delays.xlsx"
 
@@ -195,12 +195,12 @@ def login_screen():
         """
         <div class="hero-wrap">
             <div class="hero-title">⚽ <span>Allsvenskan</span> Set Piece Studio Pro</div>
-            <div class="hero-sub">A cleaner corner analysis workspace for coaches and analysts — faster reads, clearer visuals, better side filtering.</div>
+            <div class="hero-sub">Corners, free kicks and throw-ins in one analysis workspace.</div>
             <div>
                 <span class="pill">2025 Season</span>
-                <span class="pill">Team Intel</span>
-                <span class="pill">Visual Studio</span>
-                <span class="pill">Exports</span>
+                <span class="pill">Corners</span>
+                <span class="pill">Free Kicks</span>
+                <span class="pill">Throw-Ins</span>
             </div>
         </div>
         """,
@@ -270,6 +270,8 @@ def classify_outcome(text):
         return "Shot"
     if "no first contact" in s:
         return "No First Contact"
+    if "goal" in s:
+        return "Goal"
     if s in ["", "nan"]:
         return "Unknown"
     return "Other"
@@ -304,21 +306,35 @@ def zone_from_end_location(x, y):
         return "Deep box"
     return "Outside danger zone"
 
-def infer_delivery_type(technique, height):
-    t = str(technique).lower()
+def infer_delivery_type(set_piece_type, height, start_x=None):
+    sp = str(set_piece_type).lower()
     h = str(height).lower()
-    if "inswing" in t:
-        return "Inswinger"
-    if "outswing" in t:
-        return "Outswinger"
-    if "short" in t:
-        return "Short"
-    if "straight" in t:
-        return "Straight"
-    if "high" in h:
-        return "High Ball"
-    if "low" in h or "ground" in h:
-        return "Low Ball"
+    if "corner" in sp:
+        if "high" in h:
+            return "Corner - High"
+        if "ground" in h or "low" in h:
+            return "Corner - Low"
+        return "Corner - Other"
+    if "free kick" in sp:
+        if pd.notna(start_x) and start_x >= 95:
+            return "Direct Free Kick"
+        if "high" in h:
+            return "Free Kick Cross"
+        return "Free Kick Short"
+    if "throw" in sp:
+        if pd.notna(start_x) and start_x >= 85:
+            return "Long Throw"
+        return "Short Throw"
+    return "Other"
+
+def set_piece_bucket(sp_type):
+    s = str(sp_type).lower().strip()
+    if "corner" in s:
+        return "Corner"
+    if "free kick" in s:
+        return "Free Kick"
+    if "throw" in s:
+        return "Throw-In"
     return "Other"
 
 def xg_category(xg):
@@ -343,6 +359,15 @@ def safe_range_slider(label, min_val, max_val):
         return st.slider(label, min_val, max_val, (min_val, max_val))
     st.caption(f"{label}: {min_val}")
     return (min_val, max_val)
+
+def parse_xy(cell, idx=0):
+    if pd.isna(cell):
+        return np.nan
+    try:
+        parts = [float(str(x).strip()) for x in str(cell).split(",")]
+        return parts[idx] if len(parts) > idx else np.nan
+    except Exception:
+        return np.nan
 
 # =========================================================
 # UI HELPERS
@@ -395,7 +420,7 @@ def figure_layout(fig, height=420, title=None):
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False)
     return fig
 
-def filter_chips(team, match_count, taker_count, side_focus, venue_filter):
+def filter_chips(team, match_count, taker_count, side_focus, venue_filter, sp_filter):
     chips = []
     if team != "All Teams":
         chips.append(f"Team: {team}")
@@ -407,28 +432,16 @@ def filter_chips(team, match_count, taker_count, side_focus, venue_filter):
         chips.append(f"Side: {side_focus}")
     if set(venue_filter) != {"Home", "Away", "Unknown"}:
         chips.append("Venue filtered")
+    if set(sp_filter) != {"Corner", "Free Kick", "Throw-In", "Other"}:
+        chips.append("SP type filtered")
     if not chips:
-        chips = ["All teams", "All matches", "Both sides"]
+        chips = ["All teams", "All matches", "All set-piece types"]
     html = "".join([f'<span class="pill">{c}</span>' for c in chips])
     st.markdown(f'<div style="margin:0.05rem 0 0.75rem 0">{html}</div>', unsafe_allow_html=True)
 
 def visual_context_note(side_focus, n_events):
     label = "Both sides" if side_focus == "Both" else f"{side_focus} side only"
     st.caption(f"Showing: {label} · {n_events:,} events in current view")
-
-def top_insights(team_df):
-    if team_df.empty:
-        return []
-    insights = []
-    best_sr = team_df.sort_values("shot_rate", ascending=False).iloc[0]
-    best_xg = team_df.sort_values("xg_per_match", ascending=False).iloc[0]
-    best_6y = team_df.sort_values("six_yard_delivery_rate", ascending=False).iloc[0]
-    best_short = team_df.sort_values("short_corner_rate", ascending=False).iloc[0]
-    insights.append(("Best Shot Rate", f"{best_sr['team']} convert {human_pct(best_sr['shot_rate'])} of corners into shots."))
-    insights.append(("Highest xG/Match", f"{best_xg['team']} create {human_val(best_xg['xg_per_match'], 3)} xG per match from corners."))
-    insights.append(("Best 6-yard Targeting", f"{best_6y['team']} hit the 6-yard box on {human_pct(best_6y['six_yard_delivery_rate'])} of corners."))
-    insights.append(("Most Short Corners", f"{best_short['team']} use short routines {human_pct(best_short['short_corner_rate'])} of the time."))
-    return insights[:4]
 
 # =========================================================
 # PITCH & ANNOTATION HELPERS
@@ -450,7 +463,6 @@ def annotate_side(fig, side_focus):
     return fig
 
 def draw_pitch(fig, title=None, height=700, half=False):
-    """Vertical pitch: X = width (0–80), Y = length (0–120). Goal at top (Y=120)."""
     y_min = 60 if half else 0
     fig.update_xaxes(range=[0, 80], visible=False)
     fig.update_yaxes(range=[y_min, 120], visible=False, scaleanchor="x", scaleratio=1)
@@ -459,12 +471,12 @@ def draw_pitch(fig, title=None, height=700, half=False):
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         margin=dict(l=10, r=10, t=40, b=10),
         shapes=[
-            dict(type="rect",   x0=0,  y0=y_min, x1=80, y1=120, line=dict(color="white", width=2)),
-            dict(type="line",   x0=0,  y0=60,    x1=80, y1=60,  line=dict(color="white", width=1.5)) if not half else {},
-            dict(type="rect",   x0=18, y0=102,   x1=62, y1=120, line=dict(color="white", width=1.5)),
-            dict(type="rect",   x0=30, y0=114,   x1=50, y1=120, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=0, y0=y_min, x1=80, y1=120, line=dict(color="white", width=2)),
+            dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)) if not half else {},
+            dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
+            dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
             dict(type="circle", x0=39.6, y0=107.6, x1=40.4, y1=108.4, fillcolor="white", line=dict(color="white")),
-            dict(type="line",   x0=36, y0=120,   x1=44, y1=120, line=dict(color="#00FF00", width=4)),
+            dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="#00FF00", width=4)),
         ],
     )
     return fig
@@ -472,25 +484,23 @@ def draw_pitch(fig, title=None, height=700, half=False):
 # =========================================================
 # CHART FUNCTIONS
 # =========================================================
-def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", side_focus="Both"):
+def shotmap_figure(df_shots, color_col="set_piece_type", title="Shotmap", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=600, half=True)
     if df_shots.empty:
         return annotate_side(fig, side_focus)
 
     df = df_shots.copy()
     df["shot_xg"] = pd.to_numeric(df.get("shot_xg", np.nan), errors="coerce").fillna(0)
-    plot_df = df[df["shot_xg"] > 0].dropna(subset=["shot_location_x", "shot_location_y"])
-
+    plot_df = df.dropna(subset=["shot_location_x", "shot_location_y"])
     if plot_df.empty:
         return annotate_side(fig, side_focus)
 
-    group_col = "corner_team" if "corner_team" in plot_df.columns else color_col
-
-    for team, sub in plot_df.groupby(group_col, dropna=False):
-        sizes = np.clip(sub["shot_xg"].values * 150 + 10, 10, 55)
+    for grp_name, sub in plot_df.groupby(color_col, dropna=False):
+        sizes = np.clip(sub["shot_xg"].fillna(0).values * 150 + 10, 10, 55)
         hover_texts = [
             f"<b>Player:</b> {row.get('Shooter', 'N/A')}<br>"
             f"<b>Team:</b> {row.get('corner_team', 'N/A')}<br>"
+            f"<b>Set Piece:</b> {row.get('set_piece_type', 'N/A')}<br>"
             f"<b>xG:</b> {row.get('shot_xg', 0):.3f}"
             for _, row in sub.iterrows()
         ]
@@ -498,19 +508,26 @@ def shotmap_figure(df_shots, color_col="corner_team", title="Shotmap", side_focu
             x=sub["shot_location_y"],
             y=sub["shot_location_x"],
             mode="markers",
-            name=str(team),
+            name=str(grp_name),
             marker=dict(size=sizes, opacity=0.75, line=dict(color="white", width=1)),
             text=hover_texts,
             hovertemplate="%{text}<extra></extra>",
         ))
     return annotate_side(fig, side_focus)
 
-def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Map", side_focus="Both"):
+def delivery_map_figure(df_events, color_col="set_piece_type", title="Delivery Map", side_focus="Both"):
     fig = draw_pitch(go.Figure(), title=title, height=700, half=False)
     plot = df_events.dropna(
-        subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"]
+        subset=["pass_location_x", "pass_location_y"]
     ).copy()
 
+    if plot.empty:
+        return annotate_side(fig, side_focus)
+
+    plot["pass_end_location_x"] = plot["pass_end_location_x"].fillna(plot["shot_location_x"])
+    plot["pass_end_location_y"] = plot["pass_end_location_y"].fillna(plot["shot_location_y"])
+
+    plot = plot.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
     if plot.empty:
         return annotate_side(fig, side_focus)
 
@@ -532,7 +549,7 @@ def delivery_map_figure(df_events, color_col="delivery_zone", title="Delivery Ma
             text=(
                 f"<b>Player:</b> {row.get('Taker', 'N/A')}<br>"
                 f"<b>Team:</b> {row.get('corner_team', 'N/A')}<br>"
-                f"<b>SP Outcome:</b> {row.get('SP_outcome', 'N/A')}"
+                f"<b>Set Piece:</b> {row.get('set_piece_type', 'N/A')}"
             ),
             hovertemplate="%{text}<extra></extra>",
         ))
@@ -546,11 +563,11 @@ def outcome_pie(df, title="Outcome Split"):
     fig.update_traces(textposition="outside", textinfo="percent+label")
     return figure_layout(fig, 380, title)
 
-def technique_pie(df, title="Technique Split"):
+def sp_type_pie(df, title="Set Piece Split"):
     if df.empty:
         return go.Figure()
-    s = df.groupby("pass_technique", dropna=False).size().reset_index(name="n")
-    fig = px.pie(s, names="pass_technique", values="n", hole=0.55, title=title, color_discrete_sequence=QUAL_PALETTE)
+    s = df.groupby("set_piece_type", dropna=False).size().reset_index(name="n")
+    fig = px.pie(s, names="set_piece_type", values="n", hole=0.55, title=title, color_discrete_sequence=QUAL_PALETTE)
     fig.update_traces(textposition="outside", textinfo="percent+label")
     return figure_layout(fig, 380, title)
 
@@ -568,7 +585,7 @@ def team_scatter(df, x, y, size, title):
         fig.add_hline(y=df[y].median(), line_dash="dot", line_color="rgba(255,255,255,0.18)")
     return figure_layout(fig, 420, title)
 
-def cumulative_line(df, title="Cumulative Corners", group_col="corner_team"):
+def cumulative_line(df, title="Cumulative Set Pieces", group_col="corner_team"):
     if df.empty:
         return go.Figure()
     base = (
@@ -601,10 +618,10 @@ def phase_heatmap(df, title="Phase Heatmap"):
     fig = px.imshow(pivot, aspect="auto", title=title, color_continuous_scale="Blues", text_auto=True)
     return figure_layout(fig, max(380, 42 * len(pivot)), title)
 
-def taker_bar_chart(df, metric, title, top_n=12, min_corners=3):
+def taker_bar_chart(df, metric, title, top_n=12, min_events=3):
     if df.empty or metric not in df.columns:
         return go.Figure()
-    plot = df[df["corners"] >= min_corners].copy()
+    plot = df[df["events"] >= min_events].copy()
     if plot.empty:
         return go.Figure()
     plot["label"] = plot["Taker"].astype(str) + " (" + plot["corner_team"].astype(str) + ")"
@@ -612,47 +629,22 @@ def taker_bar_chart(df, metric, title, top_n=12, min_corners=3):
     fig = px.bar(
         plot, x="label", y=metric,
         color=metric, color_continuous_scale="Blues",
-        title=title, hover_data=["corners", "shots", "total_xg"],
+        title=title, hover_data=["events", "shots", "total_xg"],
     )
     fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-35)
     return figure_layout(fig, 380, title)
-
-def rolling_shot_rate(df, window=5, title="Rolling Shot Rate"):
-    if df.empty:
-        return go.Figure()
-    base = (
-        df.groupby(["Match", "corner_team"], dropna=False)
-        .agg(corners=("match_id", "size"), shots=("led_to_shot", "sum"))
-        .reset_index()
-        .sort_values(["corner_team", "Match"])
-    )
-    base["shot_rate"] = base["shots"] / base["corners"].replace(0, np.nan)
-    fig = go.Figure()
-    for team, grp in base.groupby("corner_team"):
-        grp = grp.copy().reset_index(drop=True)
-        grp["rolling"] = grp["shot_rate"].rolling(min(window, len(grp)), min_periods=1).mean()
-        fig.add_trace(go.Scatter(
-            x=grp["Match"], y=grp["rolling"],
-            mode="lines+markers", name=str(team),
-            hovertemplate=f"<b>{team}</b><br>Match: %{{x}}<br>Rolling SR: %{{y:.1%}}<extra></extra>",
-        ))
-    fig.update_layout(
-        title=title, height=400,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=8, r=8, t=48, b=8),
-        font=dict(color=TEXT),
-        hoverlabel=dict(bgcolor="#0d1c31", font_color=TEXT),
-    )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", tickformat=".0%")
-    return fig
 
 # =========================================================
 # DATA LOAD
 # =========================================================
 @st.cache_data
 def load_data():
-    possible_files = [FILE_NAME, "Allsvenskan - Corners 2025 (1).xlsx"]
+    possible_files = [
+        FILE_NAME,
+        "/mnt/data/SWE SP.xlsx",
+        "Allsvenskan - Corners 2025.xlsx",
+        "Allsvenskan - Corners 2025 (1).xlsx",
+    ]
     for f in possible_files:
         if os.path.exists(f):
             return pd.read_excel(f)
@@ -664,11 +656,14 @@ def load_hops_data():
     hops = None
     for f in possible_files:
         if os.path.exists(f):
-            hops = pd.read_excel(f)
-            break
+            try:
+                hops = pd.read_excel(f)
+                break
+            except Exception:
+                continue
 
     if hops is None:
-        raise FileNotFoundError(f"{HOPS_FILE_NAME} not found.")
+        return pd.DataFrame(columns=["Player", "Team", "Rating", "z_score", "Percentile", "Rank"])
 
     hops.columns = [str(c).strip() for c in hops.columns]
 
@@ -676,23 +671,10 @@ def load_hops_data():
     team_col = find_col(hops, ["Team"])
     rating_col = find_col(hops, ["Rating"])
 
-    missing = []
-    if player_col is None:
-        missing.append("Player")
-    if team_col is None:
-        missing.append("Team")
-    if rating_col is None:
-        missing.append("Rating")
+    if any(x is None for x in [player_col, team_col, rating_col]):
+        return pd.DataFrame(columns=["Player", "Team", "Rating", "z_score", "Percentile", "Rank"])
 
-    if missing:
-        raise ValueError(f"HOPS file missing required columns: {missing}")
-
-    hops = hops.rename(columns={
-        player_col: "Player",
-        team_col: "Team",
-        rating_col: "Rating",
-    })
-
+    hops = hops.rename(columns={player_col: "Player", team_col: "Team", rating_col: "Rating"})
     hops = hops[["Player", "Team", "Rating"]].copy()
     hops["Player"] = hops["Player"].astype(str).str.strip()
     hops["Team"] = hops["Team"].astype(str).str.strip()
@@ -700,15 +682,10 @@ def load_hops_data():
     hops = hops.dropna(subset=["Player", "Team", "Rating"]).reset_index(drop=True)
 
     rating_std = hops["Rating"].std()
-    if pd.isna(rating_std) or rating_std == 0:
-        hops["z_score"] = 0.0
-    else:
-        hops["z_score"] = (hops["Rating"] - hops["Rating"].mean()) / rating_std
-
+    hops["z_score"] = 0.0 if pd.isna(rating_std) or rating_std == 0 else (hops["Rating"] - hops["Rating"].mean()) / rating_std
     hops["Percentile"] = hops["Rating"].rank(pct=True) * 100
     hops = hops.sort_values(["Rating", "Player"], ascending=[False, True]).reset_index(drop=True)
     hops["Rank"] = np.arange(1, len(hops) + 1)
-
     return hops
 
 @st.cache_data
@@ -728,7 +705,6 @@ def load_delay_data():
         return pd.DataFrame()
 
     delay_summary.columns = [str(c).strip() for c in delay_summary.columns]
-
     expected_cols = [
         "match", "corners_found", "corners_matched",
         "avg_delay_sec", "median_delay_sec", "min_delay_sec", "max_delay_sec"
@@ -746,10 +722,7 @@ def load_delay_data():
         .str.replace(".csv.gz", "", regex=False)
         .str.replace("events_match_", "", regex=False)
     )
-
-    delay_summary["match_rate"] = (
-        delay_summary["corners_matched"] / delay_summary["corners_found"].replace(0, np.nan)
-    )
+    delay_summary["match_rate"] = delay_summary["corners_matched"] / delay_summary["corners_found"].replace(0, np.nan)
 
     return delay_summary.sort_values(
         ["avg_delay_sec", "median_delay_sec"],
@@ -761,150 +734,161 @@ def load_delay_data():
 def prepare_data(raw_df):
     df = raw_df.copy()
     df.columns = [str(c).strip() for c in df.columns]
-
     _f = lambda *c: find_col(df, list(c))
 
-    match_id_col   = _f("match_id", "match id")
-    match_col      = _f("match")
-    team_col       = _f("pass_team_name", "team", "team_name")
-    minute_col     = _f("minute")
-    second_col     = _f("second")
-    outcome_col    = _f("sp_outcome", "outcome")
-    xg_col         = _f("shot.statsbomb_xg", "shot_xg", "xg")
-    taker_col      = _f("taker")
-    shooter_col    = _f("shooter")
-    def_setup_col  = _f("defensive_setup")
-    pass_x_col     = _f("pass_location_x")
-    pass_y_col     = _f("pass_location_y")
-    pass_ex_col    = _f("pass_end_location_x")
-    pass_ey_col    = _f("pass_end_location_y")
-    shot_x_col     = _f("shot_location_x")
-    shot_y_col     = _f("shot_location_y")
-    shot_z_col     = _f("shot_location_z")
-    tech_col       = _f("pass.technique.name", "pass_technique")
-    height_col     = _f("pass.height.name", "pass_height")
-    body_col       = _f("pass.body_part.name", "pass_body_part")
-    shot_body_col  = _f("shot.body_part.name", "shot_body_part")
+    match_id_col = _f("match_id", "match id")
+    match_col = _f("match", "match_name")
+    team_col = _f("team.name", "pass_team_name", "team", "team_name")
+    minute_col = _f("minute")
+    second_col = _f("second")
+    outcome_col = _f("sp_outcome", "outcome")
+    xg_col = _f("shot.statsbomb_xg", "shot_xg", "xg")
+    taker_col = _f("taker")
+    shooter_col = _f("shooter")
+    pass_loc_col = _f("location.pass")
+    shot_loc_col = _f("location.shot")
+    shot_x_col = _f("shot_x", "shot_location_x")
+    shot_y_col = _f("shot_y", "shot_location_y")
+    tech_col = _f("pass.technique.name", "pass_technique")
+    height_col = _f("pass.height.name", "pass_height")
     shot_outcome_col = _f("shot.outcome.name", "shot_outcome")
+    sp_type_col = _f("SP_Type", "sp_type", "set_piece_type")
+    possession_col = _f("possession")
+    timestamp_col = _f("timestamp")
 
-    required = {"match_id": match_id_col, "match": match_col, "team": team_col,
-                "minute": minute_col, "second": second_col}
-    missing = [k for k, v in required.items() if v is None]
-    if missing:
-        raise ValueError(f"Missing required columns: {missing}")
+    if match_id_col is None:
+        raise ValueError("Missing required column: match_id")
+    if team_col is None:
+        raise ValueError("Missing required column: team.name/team")
+
+    if minute_col is None and timestamp_col is not None:
+        ts = df[timestamp_col].astype(str).str.split(":", expand=True)
+        if ts.shape[1] >= 3:
+            df["Minute__tmp"] = pd.to_numeric(ts[1], errors="coerce")
+            df["Second__tmp"] = pd.to_numeric(ts[2].str.replace(r"[^0-9.]", "", regex=True), errors="coerce")
+            minute_col = "Minute__tmp"
+            second_col = "Second__tmp"
+
+    if match_col is None:
+        match_col = "Match__tmp"
+        if possession_col is not None:
+            df[match_col] = "Match " + df[match_id_col].astype(str)
+        else:
+            df[match_col] = "Match " + df[match_id_col].astype(str)
+
+    if minute_col is None:
+        df["Minute__fallback"] = 0
+        minute_col = "Minute__fallback"
+    if second_col is None:
+        df["Second__fallback"] = 0
+        second_col = "Second__fallback"
 
     rename_map = {
         match_id_col: "match_id",
-        match_col:    "Match",
-        team_col:     "corner_team",
-        minute_col:   "Minute",
-        second_col:   "Second",
+        match_col: "Match",
+        team_col: "corner_team",
+        minute_col: "Minute",
+        second_col: "Second",
     }
     optional_map = {
-        outcome_col:      "SP_outcome",
-        xg_col:           "shot_xg",
-        taker_col:        "Taker",
-        shooter_col:      "Shooter",
-        def_setup_col:    "Defensive_setup",
-        pass_x_col:       "pass_location_x",
-        pass_y_col:       "pass_location_y",
-        pass_ex_col:      "pass_end_location_x",
-        pass_ey_col:      "pass_end_location_y",
-        shot_x_col:       "shot_location_x",
-        shot_y_col:       "shot_location_y",
-        shot_z_col:       "shot_location_z",
-        tech_col:         "pass_technique",
-        height_col:       "pass_height",
-        body_col:         "pass_body_part",
-        shot_body_col:    "shot_body_part",
+        outcome_col: "SP_outcome",
+        xg_col: "shot_xg",
+        taker_col: "Taker",
+        shooter_col: "Shooter",
+        shot_x_col: "shot_location_x",
+        shot_y_col: "shot_location_y",
+        tech_col: "pass_technique",
+        height_col: "pass_height",
         shot_outcome_col: "shot_outcome",
+        sp_type_col: "set_piece_type_raw",
+        pass_loc_col: "pass_location_raw",
+        shot_loc_col: "shot_location_raw",
     }
     for src, dst in optional_map.items():
         if src is not None:
             rename_map[src] = dst
     df = df.rename(columns=rename_map)
 
-    defaults = [
-        "SP_outcome", "shot_xg", "Taker", "Shooter", "Defensive_setup",
-        "pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y",
-        "shot_location_x", "shot_location_y", "shot_location_z",
-        "pass_technique", "pass_height", "pass_body_part", "shot_body_part", "shot_outcome",
-    ]
-    for c in defaults:
+    for c in ["SP_outcome", "shot_xg", "Taker", "Shooter", "shot_location_x", "shot_location_y",
+              "pass_technique", "pass_height", "shot_outcome", "set_piece_type_raw",
+              "pass_location_raw", "shot_location_raw"]:
         if c not in df.columns:
             df[c] = np.nan
 
-    for c in ["Minute", "Second", "shot_xg",
-              "pass_location_x", "pass_location_y",
-              "pass_end_location_x", "pass_end_location_y",
-              "shot_location_x", "shot_location_y", "shot_location_z"]:
-        df[c] = safe_numeric(df[c])
-
+    df["Minute"] = safe_numeric(df["Minute"]).fillna(0)
+    df["Second"] = safe_numeric(df["Second"]).fillna(0)
+    df["shot_xg"] = safe_numeric(df["shot_xg"])
     df["corner_team"] = df["corner_team"].astype(str).str.strip()
-    df["event_minute"] = df["Minute"].fillna(0) + df["Second"].fillna(0) / 60
+    df["Match"] = df["Match"].astype(str).str.strip()
 
+    if "pass_location_raw" in df.columns:
+        df["pass_location_x"] = df["pass_location_raw"].apply(lambda x: parse_xy(x, 0))
+        df["pass_location_y"] = df["pass_location_raw"].apply(lambda x: parse_xy(x, 1))
+    else:
+        df["pass_location_x"] = np.nan
+        df["pass_location_y"] = np.nan
+
+    if "shot_location_raw" in df.columns and df["shot_location_x"].isna().all():
+        df["shot_location_x"] = df["shot_location_raw"].apply(lambda x: parse_xy(x, 0))
+    if "shot_location_raw" in df.columns and df["shot_location_y"].isna().all():
+        df["shot_location_y"] = df["shot_location_raw"].apply(lambda x: parse_xy(x, 1))
+
+    df["pass_end_location_x"] = df["shot_location_x"]
+    df["pass_end_location_y"] = df["shot_location_y"]
+
+    df["event_minute"] = df["Minute"].fillna(0) + df["Second"].fillna(0) / 60
     homes, aways = zip(*[split_match_name(m) for m in df["Match"]])
     df["home_team"] = list(homes)
     df["away_team"] = list(aways)
     df["is_home_corner"] = df["corner_team"] == df["home_team"]
     df["is_away_corner"] = df["corner_team"] == df["away_team"]
-    df["venue_split"] = np.where(df["is_home_corner"], "Home",
-                         np.where(df["is_away_corner"], "Away", "Unknown"))
+    df["venue_split"] = np.where(df["is_home_corner"], "Home", np.where(df["is_away_corner"], "Away", "Unknown"))
 
+    df["set_piece_type"] = df["set_piece_type_raw"].apply(set_piece_bucket)
     sp = df["SP_outcome"].astype(str)
-    df["led_to_shot"] = (sp.str.contains("shot", case=False, na=False) &
-                         ~sp.str.contains("no shot", case=False, na=False))
-    df["is_fast_shot"]   = sp.str.contains("within 3 seconds", case=False, na=False)
-    df["outcome_bucket"] = sp.apply(classify_outcome)
+    df["led_to_shot"] = df["shot_xg"].fillna(0).gt(0) | df["shot_outcome"].notna() | sp.str.contains("shot|goal", case=False, na=False)
+    df["is_fast_shot"] = sp.str.contains("within 3 seconds", case=False, na=False)
+    df["outcome_bucket"] = np.where(df["shot_outcome"].notna(), df["shot_outcome"].astype(str), sp.apply(classify_outcome))
 
-    df["is_inswinger"]   = df["pass_technique"].astype(str).str.contains("inswing", case=False, na=False)
-    df["is_outswinger"]  = df["pass_technique"].astype(str).str.contains("outswing", case=False, na=False)
-    df["is_short_corner"]= df["pass_technique"].astype(str).str.contains("short", case=False, na=False)
-
-    df["side"]          = df["pass_location_y"].apply(side_from_y)
+    tech = df["pass_technique"].astype(str)
+    df["is_inswinger"] = tech.str.contains("inswing", case=False, na=False)
+    df["is_outswinger"] = tech.str.contains("outswing", case=False, na=False)
+    df["is_short_corner"] = tech.str.contains("short", case=False, na=False)
+    df["side"] = df["pass_location_y"].apply(side_from_y)
     df["delivery_zone"] = df["pass_end_location_y"].apply(delivery_zone_from_y)
     df["delivery_length"] = df.apply(
-        lambda r: delivery_length(r["pass_location_x"], r["pass_location_y"],
-                                  r["pass_end_location_x"], r["pass_end_location_y"]), axis=1)
-    df["end_zone"] = df.apply(
-        lambda r: zone_from_end_location(r["pass_end_location_x"], r["pass_end_location_y"]), axis=1)
-    df["is_six_yard_delivery"]   = df["end_zone"].eq("6-yard box")
-    df["is_penalty_area_delivery"]= df["end_zone"].eq("Penalty area")
+        lambda r: delivery_length(r["pass_location_x"], r["pass_location_y"], r["pass_end_location_x"], r["pass_end_location_y"]), axis=1
+    )
+    df["end_zone"] = df.apply(lambda r: zone_from_end_location(r["pass_end_location_x"], r["pass_end_location_y"]), axis=1)
+    df["is_six_yard_delivery"] = df["end_zone"].eq("6-yard box")
+    df["is_penalty_area_delivery"] = df["end_zone"].eq("Penalty area")
     df["delivery_type"] = df.apply(
-        lambda r: infer_delivery_type(r["pass_technique"], r["pass_height"]), axis=1)
-    df["xg_category"]   = df["shot_xg"].apply(xg_category)
+        lambda r: infer_delivery_type(r["set_piece_type"], r["pass_height"], r["pass_location_x"]), axis=1
+    )
+    df["xg_category"] = df["shot_xg"].apply(xg_category)
     df["goal_from_corner"] = df["shot_outcome"].astype(str).str.contains("goal", case=False, na=False)
 
     df["phase"] = pd.cut(
-        df["event_minute"],
-        bins=[-0.1, 15, 30, 45, 60, 75, 120],
-        labels=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
-        right=True,
+        df["event_minute"], bins=[-0.1, 15, 30, 45, 60, 75, 120],
+        labels=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"], right=True
     ).astype(str)
 
     match_summary = (
         df.groupby(["match_id", "Match", "home_team", "away_team"], dropna=False)
         .agg(
-            total_corners=("match_id", "size"),
-            shots_from_corners=("led_to_shot", "sum"),
+            total_events=("match_id", "size"),
+            shots_from_set_pieces=("led_to_shot", "sum"),
             fast_shots=("is_fast_shot", "sum"),
             total_xg=("shot_xg", "sum"),
             unique_takers=("Taker", pd.Series.nunique),
+            corners=("set_piece_type", lambda s: (s == "Corner").sum()),
+            free_kicks=("set_piece_type", lambda s: (s == "Free Kick").sum()),
+            throw_ins=("set_piece_type", lambda s: (s == "Throw-In").sum()),
         )
         .reset_index()
     )
-
-    def count_team_corners(row, team_col_name):
-        team_name = row[team_col_name]
-        if pd.isna(team_name):
-            return np.nan
-        return int(((df["match_id"] == row["match_id"]) & (df["corner_team"] == team_name)).sum())
-
-    match_summary["home_corners"] = match_summary.apply(lambda r: count_team_corners(r, "home_team"), axis=1)
-    match_summary["away_corners"] = match_summary.apply(lambda r: count_team_corners(r, "away_team"), axis=1)
-    match_summary["shot_rate"]    = match_summary["shots_from_corners"] / match_summary["total_corners"].replace(0, np.nan)
-    match_summary["xg_per_corner"]= match_summary["total_xg"] / match_summary["total_corners"].replace(0, np.nan)
-    match_summary["corner_diff"]  = match_summary["home_corners"] - match_summary["away_corners"]
+    match_summary["shot_rate"] = match_summary["shots_from_set_pieces"] / match_summary["total_events"].replace(0, np.nan)
+    match_summary["xg_per_event"] = match_summary["total_xg"] / match_summary["total_events"].replace(0, np.nan)
 
     return df, match_summary
 
@@ -913,43 +897,36 @@ def prepare_data(raw_df):
 # =========================================================
 def build_team_summary(df):
     if df.empty:
-        return pd.DataFrame(columns=[
-            "team", "corners_taken", "matches", "shots_from_corners", "fast_shots",
-            "total_xg", "taker_variety", "inswingers", "outswingers", "short_corners",
-            "six_yard_deliveries", "penalty_area_deliveries", "corners_per_match",
-            "shot_rate", "fast_shot_rate", "xg_per_match", "xg_per_corner",
-            "six_yard_delivery_rate", "penalty_area_delivery_rate",
-            "short_corner_rate", "inswinger_rate", "outswinger_rate"
-        ])
+        return pd.DataFrame()
     out = (
         df.groupby("corner_team", dropna=False)
         .agg(
-            corners_taken=("match_id", "size"),
+            events=("match_id", "size"),
             matches=("match_id", pd.Series.nunique),
-            shots_from_corners=("led_to_shot", "sum"),
+            shots_from_set_pieces=("led_to_shot", "sum"),
             fast_shots=("is_fast_shot", "sum"),
             total_xg=("shot_xg", "sum"),
             taker_variety=("Taker", pd.Series.nunique),
-            inswingers=("is_inswinger", "sum"),
-            outswingers=("is_outswinger", "sum"),
-            short_corners=("is_short_corner", "sum"),
+            corners=("set_piece_type", lambda s: (s == "Corner").sum()),
+            free_kicks=("set_piece_type", lambda s: (s == "Free Kick").sum()),
+            throw_ins=("set_piece_type", lambda s: (s == "Throw-In").sum()),
             six_yard_deliveries=("is_six_yard_delivery", "sum"),
             penalty_area_deliveries=("is_penalty_area_delivery", "sum"),
         )
         .reset_index()
         .rename(columns={"corner_team": "team"})
     )
-    denom = out["corners_taken"].replace(0, np.nan)
-    out["corners_per_match"]          = out["corners_taken"] / out["matches"].replace(0, np.nan)
-    out["shot_rate"]                  = out["shots_from_corners"] / denom
-    out["fast_shot_rate"]             = out["fast_shots"] / denom
-    out["xg_per_match"]               = out["total_xg"] / out["matches"].replace(0, np.nan)
-    out["xg_per_corner"]              = out["total_xg"] / denom
-    out["six_yard_delivery_rate"]     = out["six_yard_deliveries"] / denom
+    denom = out["events"].replace(0, np.nan)
+    out["events_per_match"] = out["events"] / out["matches"].replace(0, np.nan)
+    out["shot_rate"] = out["shots_from_set_pieces"] / denom
+    out["fast_shot_rate"] = out["fast_shots"] / denom
+    out["xg_per_match"] = out["total_xg"] / out["matches"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / denom
+    out["six_yard_delivery_rate"] = out["six_yard_deliveries"] / denom
     out["penalty_area_delivery_rate"] = out["penalty_area_deliveries"] / denom
-    out["short_corner_rate"]          = out["short_corners"] / denom
-    out["inswinger_rate"]             = out["inswingers"] / denom
-    out["outswinger_rate"]            = out["outswingers"] / denom
+    out["corner_rate"] = out["corners"] / denom
+    out["free_kick_rate"] = out["free_kicks"] / denom
+    out["throw_in_rate"] = out["throw_ins"] / denom
     return out
 
 def taker_summary(df):
@@ -958,37 +935,56 @@ def taker_summary(df):
     out = (
         df.groupby(["corner_team", "Taker"], dropna=False)
         .agg(
-            corners=("match_id", "size"),
+            events=("match_id", "size"),
             shots=("led_to_shot", "sum"),
             fast_shots=("is_fast_shot", "sum"),
             goals=("goal_from_corner", "sum"),
             total_xg=("shot_xg", "sum"),
-            inswingers=("is_inswinger", "sum"),
-            short_corners=("is_short_corner", "sum"),
-            six_yard_deliveries=("is_six_yard_delivery", "sum"),
+            corners=("set_piece_type", lambda s: (s == "Corner").sum()),
+            free_kicks=("set_piece_type", lambda s: (s == "Free Kick").sum()),
+            throw_ins=("set_piece_type", lambda s: (s == "Throw-In").sum()),
         )
         .reset_index()
     )
-    d = out["corners"].replace(0, np.nan)
-    out["shot_rate"]      = out["shots"] / d
-    out["xg_per_corner"]  = out["total_xg"] / d
-    out["goal_rate"]      = out["goals"] / d
-    out["inswinger_rate"] = out["inswingers"] / d
-    return out.sort_values(["corners", "total_xg"], ascending=False)
+    d = out["events"].replace(0, np.nan)
+    out["shot_rate"] = out["shots"] / d
+    out["xg_per_event"] = out["total_xg"] / d
+    out["goal_rate"] = out["goals"] / d
+    return out.sort_values(["events", "total_xg"], ascending=False)
+
+def build_sp_type_summary(df):
+    if df.empty:
+        return pd.DataFrame()
+    out = (
+        df.groupby("set_piece_type", dropna=False)
+        .agg(
+            events=("match_id", "size"),
+            shots=("led_to_shot", "sum"),
+            goals=("goal_from_corner", "sum"),
+            total_xg=("shot_xg", "sum"),
+            matches=("match_id", pd.Series.nunique),
+        )
+        .reset_index()
+    )
+    out["shot_rate"] = out["shots"] / out["events"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / out["events"].replace(0, np.nan)
+    out["events_per_match"] = out["events"] / out["matches"].replace(0, np.nan)
+    return out.sort_values("events", ascending=False)
 
 # =========================================================
 # EXPORTS
 # =========================================================
-def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df, delay_df):
+def download_excel_workbook(events_df, team_df, match_df, taker_df, hops_df, delay_df, sp_df):
     buf = BytesIO()
     try:
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            events_df.to_excel(writer, sheet_name="Events",  index=False)
-            team_df.to_excel(writer,   sheet_name="Teams",   index=False)
-            match_df.to_excel(writer,  sheet_name="Matches", index=False)
-            taker_df.to_excel(writer,  sheet_name="Takers",  index=False)
-            hops_df.to_excel(writer,   sheet_name="HOPS",    index=False)
-            delay_df.to_excel(writer,  sheet_name="Delay",   index=False)
+            events_df.to_excel(writer, sheet_name="Events", index=False)
+            team_df.to_excel(writer, sheet_name="Teams", index=False)
+            match_df.to_excel(writer, sheet_name="Matches", index=False)
+            taker_df.to_excel(writer, sheet_name="Takers", index=False)
+            sp_df.to_excel(writer, sheet_name="SP Types", index=False)
+            hops_df.to_excel(writer, sheet_name="HOPS", index=False)
+            delay_df.to_excel(writer, sheet_name="Delay", index=False)
         return buf.getvalue()
     except Exception:
         return None
@@ -1013,14 +1009,14 @@ st.markdown(
     """
     <div class="hero-wrap">
         <div class="hero-title">⚽ <span>Allsvenskan</span> Set Piece Studio Pro</div>
-        <div class="hero-sub">A cleaner corner analysis workspace for coaches and analysts — faster reads, clearer visuals, better side filtering.</div>
+        <div class="hero-sub">Corners, free kicks and throw-ins in one cleaner analysis workspace.</div>
         <div>
             <span class="pill">Executive</span>
             <span class="pill">Visuals</span>
             <span class="pill">Teams</span>
             <span class="pill">Matches</span>
             <span class="pill">Scouting</span>
-            <span class="pill">Delay</span>
+            <span class="pill">Set Piece Types</span>
             <span class="pill">HOPS</span>
             <span class="pill">Exports</span>
         </div>
@@ -1032,10 +1028,10 @@ st.markdown(
 # =========================================================
 # SIDEBAR
 # =========================================================
-all_teams   = sorted([t for t in df["corner_team"].dropna().unique() if str(t).strip()])
-all_takers  = sorted([str(t) for t in df["Taker"].dropna().astype(str).unique() if str(t).strip()])
+all_teams = sorted([t for t in df["corner_team"].dropna().unique() if str(t).strip()])
+all_takers = sorted([str(t) for t in df["Taker"].dropna().astype(str).unique() if str(t).strip()])
 all_matches = sorted(df["Match"].dropna().astype(str).unique().tolist())
-all_setups  = sorted([str(x) for x in df["Defensive_setup"].dropna().astype(str).unique() if str(x).strip()])
+all_sp_types = ["Corner", "Free Kick", "Throw-In", "Other"]
 
 with st.sidebar:
     st.markdown("### 🎛 Studio Controls")
@@ -1046,27 +1042,27 @@ with st.sidebar:
         "🔍 Match Explorer",
         "👤 Scouting Center",
         "📈 Trend Lab",
+        "⚽ Set Piece Types",
         "⏱ Delay Time",
         "🦘 HOPS",
         "🗂 Data Hub",
     ])
     st.markdown("---")
     st.markdown("**Quick Filters**")
-    sel_team    = st.selectbox("Team", ["All Teams"] + all_teams)
+    sel_team = st.selectbox("Team", ["All Teams"] + all_teams)
     sel_matches = st.multiselect("Matches", all_matches)
-    side_focus  = st.radio("Corner Side", ["Both", "Left", "Right"], horizontal=True,
-                            help="Filter corners by the side they were taken from.")
+    sel_sp_types = st.multiselect("Set Piece Type", all_sp_types, default=["Corner", "Free Kick", "Throw-In"])
+    side_focus = st.radio("Delivery Side", ["Both", "Left", "Right"], horizontal=True)
 
     with st.expander("Advanced filters", expanded=False):
         sel_takers = st.multiselect("Taker(s)", all_takers)
-
         minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
         minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
-        min_range  = safe_range_slider("Minute Range", minute_min, minute_max)
+        min_range = safe_range_slider("Minute Range", minute_min, minute_max)
 
-        match_corner_min = int(match_summary["total_corners"].min()) if not match_summary.empty else 0
-        match_corner_max = int(match_summary["total_corners"].max()) if not match_summary.empty else 0
-        corner_range     = safe_range_slider("Match Corner Range", match_corner_min, match_corner_max)
+        match_event_min = int(match_summary["total_events"].min()) if not match_summary.empty else 0
+        match_event_max = int(match_summary["total_events"].max()) if not match_summary.empty else 0
+        event_range = safe_range_slider("Match Event Range", match_event_min, match_event_max)
 
         zone_filter = st.multiselect(
             "Delivery Zone",
@@ -1078,43 +1074,23 @@ with st.sidebar:
             ["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"],
             default=["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"],
         )
-        venue_filter = st.multiselect(
-            "Home / Away", ["Home", "Away", "Unknown"], default=["Home", "Away", "Unknown"])
+        venue_filter = st.multiselect("Home / Away", ["Home", "Away", "Unknown"], default=["Home", "Away", "Unknown"])
         phase_filter = st.multiselect(
             "Phase", ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
-            default=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"])
-        setup_filter = st.multiselect("Defensive Setup", all_setups)
-
-        st.markdown("**Event type**")
-        shot_only    = st.checkbox("Shot outcomes only")
-        inswing_only = st.checkbox("Inswingers only")
-        outswing_only= st.checkbox("Outswingers only")
-        short_only   = st.checkbox("Short corners only")
-
-minute_min = int(df["Minute"].min()) if not df["Minute"].dropna().empty else 0
-minute_max = int(df["Minute"].max()) if not df["Minute"].dropna().empty else 0
-min_range       = locals().get("min_range",       (minute_min, minute_max))
-match_corner_min= int(match_summary["total_corners"].min()) if not match_summary.empty else 0
-match_corner_max= int(match_summary["total_corners"].max()) if not match_summary.empty else 0
-corner_range    = locals().get("corner_range",    (match_corner_min, match_corner_max))
-sel_takers      = locals().get("sel_takers",      [])
-zone_filter     = locals().get("zone_filter",     ["Near Post Zone", "Central Zone", "Far Post Zone", "Unknown"])
-end_zone_filter = locals().get("end_zone_filter", ["6-yard box", "Penalty area", "Deep box", "Outside danger zone", "Unknown"])
-venue_filter    = locals().get("venue_filter",    ["Home", "Away", "Unknown"])
-phase_filter    = locals().get("phase_filter",    ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"])
-setup_filter    = locals().get("setup_filter",    [])
-shot_only       = locals().get("shot_only",       False)
-inswing_only    = locals().get("inswing_only",    False)
-outswing_only   = locals().get("outswing_only",   False)
-short_only      = locals().get("short_only",      False)
+            default=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"]
+        )
+        shot_only = st.checkbox("Shot outcomes only")
+        corners_only = st.checkbox("Corners only")
+        free_kicks_only = st.checkbox("Free kicks only")
+        throw_ins_only = st.checkbox("Throw-ins only")
 
 # =========================================================
 # FILTERS
 # =========================================================
 def apply_filters(events, matches, team_override="__USE_SELECTED_TEAM__"):
-    out_matches = matches[matches["total_corners"].between(corner_range[0], corner_range[1])].copy()
-    out_events  = events[events["match_id"].isin(out_matches["match_id"].unique())].copy()
-    out_events  = out_events[out_events["Minute"].fillna(0).between(min_range[0], min_range[1])]
+    out_matches = matches[matches["total_events"].between(event_range[0], event_range[1])].copy()
+    out_events = events[events["match_id"].isin(out_matches["match_id"].unique())].copy()
+    out_events = out_events[out_events["Minute"].fillna(0).between(min_range[0], min_range[1])]
 
     effective_side_filter = {"Left": ["Left"], "Right": ["Right"]}.get(side_focus, ["Left", "Right", "Unknown"])
 
@@ -1124,15 +1100,15 @@ def apply_filters(events, matches, team_override="__USE_SELECTED_TEAM__"):
         selected_team_filter = team_override
 
     filter_map = {
-        "corner_team":     selected_team_filter,
-        "Taker":           sel_takers if sel_takers else None,
-        "Match":           sel_matches if sel_matches else None,
-        "side":            effective_side_filter,
-        "delivery_zone":   zone_filter if zone_filter else None,
-        "end_zone":        end_zone_filter if end_zone_filter else None,
-        "venue_split":     venue_filter if venue_filter else None,
-        "phase":           phase_filter if phase_filter else None,
-        "Defensive_setup": setup_filter if setup_filter else None,
+        "corner_team": selected_team_filter,
+        "Taker": sel_takers if sel_takers else None,
+        "Match": sel_matches if sel_matches else None,
+        "side": effective_side_filter,
+        "delivery_zone": zone_filter if zone_filter else None,
+        "end_zone": end_zone_filter if end_zone_filter else None,
+        "venue_split": venue_filter if venue_filter else None,
+        "phase": phase_filter if phase_filter else None,
+        "set_piece_type": sel_sp_types if sel_sp_types else None,
     }
     for col, allowed in filter_map.items():
         if allowed is not None:
@@ -1140,38 +1116,34 @@ def apply_filters(events, matches, team_override="__USE_SELECTED_TEAM__"):
 
     if shot_only:
         out_events = out_events[out_events["led_to_shot"]]
-    if short_only:
-        out_events = out_events[out_events["is_short_corner"]]
-    if inswing_only and not outswing_only:
-        out_events = out_events[out_events["is_inswinger"]]
-    if outswing_only and not inswing_only:
-        out_events = out_events[out_events["is_outswinger"]]
+    if corners_only:
+        out_events = out_events[out_events["set_piece_type"] == "Corner"]
+    if free_kicks_only:
+        out_events = out_events[out_events["set_piece_type"] == "Free Kick"]
+    if throw_ins_only:
+        out_events = out_events[out_events["set_piece_type"] == "Throw-In"]
 
     out_matches = out_matches[out_matches["match_id"].isin(out_events["match_id"].unique())]
-    return out_events, out_matches, build_team_summary(out_events), taker_summary(out_events)
+    return out_events, out_matches, build_team_summary(out_events), taker_summary(out_events), build_sp_type_summary(out_events)
 
-league_event_df, league_match_df, league_team_df, league_taker_df = apply_filters(df, match_summary)
-
-comparison_event_df, comparison_match_df, comparison_team_df, comparison_taker_df = apply_filters(
-    df, match_summary, team_override=None
-)
-
-filter_chips(sel_team, len(sel_matches), len(sel_takers), side_focus, venue_filter)
+league_event_df, league_match_df, league_team_df, league_taker_df, league_sp_df = apply_filters(df, match_summary)
+comparison_event_df, comparison_match_df, comparison_team_df, comparison_taker_df, comparison_sp_df = apply_filters(df, match_summary, team_override=None)
+filter_chips(sel_team, len(sel_matches), len(sel_takers), side_focus, venue_filter, sel_sp_types)
 
 # =========================================================
 # KPI ROW
 # =========================================================
 def render_kpis(events):
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    total_xg  = events["shot_xg"].fillna(0).sum() if not events.empty else 0
-    shot_rate = events["led_to_shot"].mean()       if not events.empty else 0
-    goals     = int(events["goal_from_corner"].sum()) if not events.empty else 0
-    with c1: metric_card("Events",    f"{len(events):,}", "Corner actions")
-    with c2: metric_card("Matches",   f"{events['match_id'].nunique() if not events.empty else 0:,}", "Unique matches")
-    with c3: metric_card("Shots",     f"{int(events['led_to_shot'].sum()) if not events.empty else 0:,}", "From corners")
-    with c4: metric_card("Total xG",  f"{total_xg:.2f}", "xG generated")
-    with c5: metric_card("Shot Rate", f"{shot_rate*100:.1f}%", "Shots / corner")
-    with c6: metric_card("Goals",     f"{goals}", "From corners")
+    total_xg = events["shot_xg"].fillna(0).sum() if not events.empty else 0
+    shot_rate = events["led_to_shot"].mean() if not events.empty else 0
+    goals = int(events["goal_from_corner"].sum()) if not events.empty else 0
+    with c1: metric_card("Events", f"{len(events):,}", "Set-piece actions")
+    with c2: metric_card("Matches", f"{events['match_id'].nunique() if not events.empty else 0:,}", "Unique matches")
+    with c3: metric_card("Shots", f"{int(events['led_to_shot'].sum()) if not events.empty else 0:,}", "From set pieces")
+    with c4: metric_card("Total xG", f"{total_xg:.2f}", "xG generated")
+    with c5: metric_card("Shot Rate", f"{shot_rate*100:.1f}%", "Shots / event")
+    with c6: metric_card("Goals", f"{goals}", "From set pieces")
 
 # =========================================================
 # PAGES
@@ -1180,34 +1152,45 @@ if page == "🏠 Executive Dashboard":
     render_kpis(league_event_df)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    insights = top_insights(league_team_df)
-    if insights:
-        cols = st.columns(len(insights))
-        for i, (title, body) in enumerate(insights):
-            with cols[i]:
-                insight_box(title, body)
+    c0, c00 = st.columns(2)
+    with c0:
+        section_header("Set Piece Mix")
+        st.plotly_chart(sp_type_pie(league_event_df, "Set Piece Type Split"), use_container_width=True)
+    with c00:
+        section_header("Efficiency by Set Piece Type")
+        if not league_sp_df.empty:
+            fig = px.bar(
+                league_sp_df.sort_values("events", ascending=False),
+                x="set_piece_type", y="shot_rate", color="xg_per_event",
+                title="Shot Rate by Set Piece Type", color_continuous_scale="Blues",
+                hover_data=["events", "total_xg", "goals"],
+            )
+            fig.update_layout(coloraxis_showscale=False)
+            fig.update_yaxes(tickformat=".0%")
+            st.plotly_chart(figure_layout(fig, 400, "Shot Rate by Set Piece Type"), use_container_width=True)
+        else:
+            empty_state()
 
-    st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
-        section_header("Corner Volume by Team")
+        section_header("Set Piece Volume by Team")
         if not league_team_df.empty:
             fig = px.bar(
-                league_team_df.sort_values("corners_taken", ascending=False),
-                x="team", y="corners_taken",
-                color="corners_per_match", color_continuous_scale="Blues",
-                labels={"team": "", "corners_taken": "Corners"},
+                league_team_df.sort_values("events", ascending=False),
+                x="team", y="events",
+                color="events_per_match", color_continuous_scale="Blues",
+                labels={"team": "", "events": "Set pieces"},
                 hover_data=["matches", "shot_rate", "xg_per_match"],
             )
             fig.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(figure_layout(fig, 400, "Corner Volume by Team"), use_container_width=True)
+            st.plotly_chart(figure_layout(fig, 400, "Set Piece Volume by Team"), use_container_width=True)
         else:
             empty_state()
     with c2:
         section_header("Efficiency Map")
         if not league_team_df.empty:
             st.plotly_chart(
-                team_scatter(league_team_df, "shot_rate", "xg_per_match", "corners_taken", "Shot Rate vs xG/Match"),
+                team_scatter(league_team_df, "shot_rate", "xg_per_match", "events", "Shot Rate vs xG/Match"),
                 use_container_width=True,
             )
         else:
@@ -1216,29 +1199,20 @@ if page == "🏠 Executive Dashboard":
     section_header("Executive Match Board")
     if not league_match_df.empty:
         show_cols = [c for c in [
-            "Match", "home_team", "away_team", "home_corners", "away_corners",
-            "total_corners", "shots_from_corners", "fast_shots", "total_xg",
-            "shot_rate", "xg_per_corner", "unique_takers", "corner_diff"
+            "Match", "home_team", "away_team", "total_events", "corners", "free_kicks", "throw_ins",
+            "shots_from_set_pieces", "fast_shots", "total_xg", "shot_rate", "xg_per_event", "unique_takers"
         ] if c in league_match_df.columns]
         st.dataframe(
-            league_match_df[show_cols].sort_values(["total_xg", "total_corners"], ascending=False).reset_index(drop=True),
+            league_match_df[show_cols].sort_values(["total_xg", "total_events"], ascending=False).reset_index(drop=True),
             use_container_width=True, height=420,
         )
     else:
         empty_state()
 
-    with st.expander("More breakdowns", expanded=False):
-        c3, c4 = st.columns(2)
-        with c3:
-            st.plotly_chart(outcome_pie(league_event_df), use_container_width=True)
-        with c4:
-            st.plotly_chart(technique_pie(league_event_df), use_container_width=True)
-
 elif page == "📊 Visualisation Studio":
-    section_header("Visualisation Studio", "Cleaner match visuals with side-aware filtering.")
+    section_header("Visualisation Studio", "Shots and deliveries across corners, free kicks and throw-ins.")
     visual_context_note(side_focus, len(league_event_df))
-
-    tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "↔ Side Comparison", "⏱ Timing"])
+    tabs = st.tabs(["🎯 Shots", "🏹 Deliveries", "⚽ Type Comparison", "⏱ Timing"])
 
     with tabs[0]:
         shot_df = league_event_df.dropna(subset=["shot_location_x", "shot_location_y"])
@@ -1246,65 +1220,57 @@ elif page == "📊 Visualisation Studio":
             st.info("No shot data available for this selection.")
         else:
             st.plotly_chart(
-                shotmap_figure(shot_df, color_col="corner_team", title="Attacking Shot Map", side_focus=side_focus),
+                shotmap_figure(shot_df, color_col="set_piece_type", title="Attacking Shot Map", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[1]:
-        del_df = league_event_df.dropna(
-            subset=["pass_location_x", "pass_location_y", "pass_end_location_x", "pass_end_location_y"])
+        del_df = league_event_df.dropna(subset=["pass_location_x", "pass_location_y"])
         if del_df.empty:
             empty_state("No delivery data.")
         else:
             st.plotly_chart(
-                delivery_map_figure(del_df, "delivery_zone", "Delivery Map", side_focus=side_focus),
+                delivery_map_figure(del_df, "set_piece_type", "Delivery Map", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[2]:
-        left_df  = league_event_df[league_event_df["side"] == "Left"]
-        right_df = league_event_df[league_event_df["side"] == "Right"]
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("#### Left-side corners")
-            if left_df.empty:
-                empty_state("No left-side corners in current filters.")
-            else:
-                st.plotly_chart(
-                    delivery_map_figure(left_df, "delivery_zone", "Left-side Delivery Map", side_focus="Left"),
-                    use_container_width=True,
+        if league_sp_df.empty:
+            empty_state()
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = px.bar(
+                    league_sp_df, x="set_piece_type", y="events",
+                    color="set_piece_type", title="Volume by Type", color_discrete_sequence=QUAL_PALETTE
                 )
-        with c2:
-            st.markdown("#### Right-side corners")
-            if right_df.empty:
-                empty_state("No right-side corners in current filters.")
-            else:
-                st.plotly_chart(
-                    delivery_map_figure(right_df, "delivery_zone", "Right-side Delivery Map", side_focus="Right"),
-                    use_container_width=True,
+                st.plotly_chart(figure_layout(fig, 360, "Volume by Type"), use_container_width=True)
+            with c2:
+                fig = px.bar(
+                    league_sp_df, x="set_piece_type", y="xg_per_event",
+                    color="set_piece_type", title="xG per Event by Type", color_discrete_sequence=QUAL_PALETTE
                 )
+                st.plotly_chart(figure_layout(fig, 360, "xG per Event by Type"), use_container_width=True)
 
     with tabs[3]:
         c1, c2 = st.columns(2)
         with c1:
-            st.plotly_chart(cumulative_line(league_event_df, "Cumulative Corners by Team"), use_container_width=True)
+            st.plotly_chart(cumulative_line(league_event_df, "Cumulative Set Pieces by Team"), use_container_width=True)
         with c2:
-            st.plotly_chart(minute_histogram(league_event_df, "Minute Distribution by Team", color_col="corner_team"), use_container_width=True)
+            st.plotly_chart(minute_histogram(league_event_df, "Minute Distribution by Set Piece Type", color_col="set_piece_type"), use_container_width=True)
         st.plotly_chart(phase_heatmap(league_event_df, "Team × Phase Heatmap"), use_container_width=True)
 
 elif page == "🏟 Team Analysis":
     if sel_team == "All Teams":
         st.info("Select a team in the sidebar for full team analysis.")
         if not league_team_df.empty:
-            st.dataframe(league_team_df.sort_values("xg_per_match", ascending=False).reset_index(drop=True),
-                         use_container_width=True, height=560)
+            st.dataframe(league_team_df.sort_values("xg_per_match", ascending=False).reset_index(drop=True), use_container_width=True, height=560)
         else:
             empty_state()
     else:
-        team_ev     = league_event_df[league_event_df["corner_team"] == sel_team].copy()
-        team_row    = league_team_df[league_team_df["team"] == sel_team]
+        team_ev = league_event_df[league_event_df["corner_team"] == sel_team].copy()
+        team_row = league_team_df[league_team_df["team"] == sel_team]
         team_takers = taker_summary(team_ev)
-
         render_kpis(team_ev)
         tabs = st.tabs(["📊 Overview", "🎯 Visuals", "👤 Takers", "📋 Matches", "🏆 Report Card"])
 
@@ -1313,31 +1279,18 @@ elif page == "🏟 Team Analysis":
             with c1:
                 st.plotly_chart(outcome_pie(team_ev, f"{sel_team} — Outcome Split"), use_container_width=True)
             with c2:
-                st.plotly_chart(technique_pie(team_ev, f"{sel_team} — Technique Split"), use_container_width=True)
-            c3, c4 = st.columns(2)
-            with c3:
-                zone_df = team_ev.groupby("end_zone", dropna=False).size().reset_index(name="n")
-                fig = px.bar(zone_df, x="end_zone", y="n", color="end_zone",
-                             title="End-Zone Profile", color_discrete_sequence=QUAL_PALETTE)
-                st.plotly_chart(figure_layout(fig, 360, "End-Zone Profile"), use_container_width=True)
-            with c4:
-                side_df = team_ev.groupby("side", dropna=False).size().reset_index(name="n")
-                fig = px.pie(side_df, names="side", values="n", title="Side Split",
-                             hole=0.55, color_discrete_sequence=QUAL_PALETTE)
-                fig.update_traces(textposition="outside", textinfo="percent+label")
-                st.plotly_chart(figure_layout(fig, 360, "Side Split"), use_container_width=True)
+                st.plotly_chart(sp_type_pie(team_ev, f"{sel_team} — Set Piece Split"), use_container_width=True)
 
         with tabs[1]:
             shot_df = team_ev.dropna(subset=["shot_location_x", "shot_location_y"])
-            del_df  = team_ev.dropna(subset=["pass_location_x", "pass_location_y",
-                                              "pass_end_location_x", "pass_end_location_y"])
+            del_df = team_ev.dropna(subset=["pass_location_x", "pass_location_y"])
             c1, c2 = st.columns(2)
             with c1:
                 if shot_df.empty:
                     empty_state("No shot location data.")
                 else:
                     st.plotly_chart(
-                        shotmap_figure(shot_df, color_col="corner_team", title=f"Shotmap — {sel_team}", side_focus=side_focus),
+                        shotmap_figure(shot_df, color_col="set_piece_type", title=f"Shotmap — {sel_team}", side_focus=side_focus),
                         use_container_width=True,
                     )
             with c2:
@@ -1345,7 +1298,7 @@ elif page == "🏟 Team Analysis":
                     empty_state("No delivery coordinate data.")
                 else:
                     st.plotly_chart(
-                        delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_team}", side_focus=side_focus),
+                        delivery_map_figure(del_df, "set_piece_type", f"Delivery Map — {sel_team}", side_focus=side_focus),
                         use_container_width=True,
                     )
 
@@ -1356,22 +1309,20 @@ elif page == "🏟 Team Analysis":
                 st.dataframe(team_takers.reset_index(drop=True), use_container_width=True, height=380)
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.plotly_chart(taker_bar_chart(team_takers, "xg_per_corner", f"Takers by xG/Corner — {sel_team}", min_corners=2), use_container_width=True)
+                    st.plotly_chart(taker_bar_chart(team_takers, "xg_per_event", f"Takers by xG/Event — {sel_team}", min_events=2), use_container_width=True)
                 with c2:
-                    st.plotly_chart(taker_bar_chart(team_takers, "shot_rate", f"Takers by Shot Rate — {sel_team}", min_corners=2), use_container_width=True)
+                    st.plotly_chart(taker_bar_chart(team_takers, "shot_rate", f"Takers by Shot Rate — {sel_team}", min_events=2), use_container_width=True)
 
         with tabs[3]:
             match_view = (
                 team_ev.groupby(["Match", "venue_split"], dropna=False)
-                .agg(corners=("match_id", "size"), shots=("led_to_shot", "sum"),
-                     total_xg=("shot_xg", "sum"), fast_shots=("is_fast_shot", "sum"))
+                .agg(events=("match_id", "size"), shots=("led_to_shot", "sum"),
+                     total_xg=("shot_xg", "sum"), goals=("goal_from_corner", "sum"))
                 .reset_index()
             )
-            match_view["shot_rate"]    = match_view["shots"] / match_view["corners"].replace(0, np.nan)
-            match_view["xg_per_corner"]= match_view["total_xg"] / match_view["corners"].replace(0, np.nan)
-            st.dataframe(match_view.sort_values("total_xg", ascending=False).reset_index(drop=True),
-                         use_container_width=True, height=420)
-            st.plotly_chart(rolling_shot_rate(team_ev, title=f"Rolling Shot Rate — {sel_team}"), use_container_width=True)
+            match_view["shot_rate"] = match_view["shots"] / match_view["events"].replace(0, np.nan)
+            match_view["xg_per_event"] = match_view["total_xg"] / match_view["events"].replace(0, np.nan)
+            st.dataframe(match_view.sort_values("total_xg", ascending=False).reset_index(drop=True), use_container_width=True, height=420)
 
         with tabs[4]:
             if team_row.empty:
@@ -1379,40 +1330,18 @@ elif page == "🏟 Team Analysis":
             else:
                 row = team_row.iloc[0]
                 c1, c2, c3 = st.columns(3)
-                with c1:
-                    metric_card("Corners/Match", human_val(row.get("corners_per_match")), "Volume")
-                with c2:
-                    metric_card("Shot Rate", human_pct(row.get("shot_rate")), "Shots per corner")
-                with c3:
-                    metric_card("xG/Match", human_val(row.get("xg_per_match"), 3), "Chance quality")
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                metric_map = [
-                    ("Corners/Match",    "corners_per_match"),
-                    ("Shot Rate",        "shot_rate"),
-                    ("xG/Match",         "xg_per_match"),
-                    ("6Y Delivery Rate", "six_yard_delivery_rate"),
-                    ("Short Corner Rate","short_corner_rate"),
-                    ("Inswinger Rate",   "inswinger_rate"),
-                ]
-
-                for label, col in metric_map:
-                    val = row.get(col)
-                    pct = percentile_rank(comparison_team_df[col], val) if col in comparison_team_df.columns else np.nan
-                    display = human_pct(val) if "Rate" in label else human_val(val, 3)
-                    st.markdown(
-                        f"**{label}**: {display} · {pct:.0f}th percentile"
-                        if not pd.isna(pct) else f"**{label}**: {display}"
-                    )
+                with c1: metric_card("Events/Match", human_val(row.get("events_per_match")), "Volume")
+                with c2: metric_card("Shot Rate", human_pct(row.get("shot_rate")), "Shots per event")
+                with c3: metric_card("xG/Match", human_val(row.get("xg_per_match"), 3), "Chance quality")
 
 elif page == "🔍 Match Explorer":
     match_options = sorted(league_match_df["Match"].dropna().unique().tolist()) if not league_match_df.empty else []
     sel_match = st.selectbox("Select Match", ["All Matches"] + match_options)
 
     match_ev = league_event_df.copy()
-    match_m  = league_match_df.copy()
+    match_m = league_match_df.copy()
     if sel_match != "All Matches":
-        match_m  = match_m[match_m["Match"] == sel_match]
+        match_m = match_m[match_m["Match"] == sel_match]
         match_ev = match_ev[match_ev["match_id"].isin(match_m["match_id"].unique())]
 
     render_kpis(match_ev)
@@ -1423,16 +1352,16 @@ elif page == "🔍 Match Explorer":
             empty_state()
         else:
             st.dataframe(match_m.reset_index(drop=True), use_container_width=True, height=280)
-            breakdown = build_team_summary(match_ev)
+            breakdown = build_sp_type_summary(match_ev)
             if not breakdown.empty:
-                st.dataframe(breakdown.reset_index(drop=True), use_container_width=True, height=260)
+                st.dataframe(breakdown.reset_index(drop=True), use_container_width=True, height=220)
 
     with tabs[1]:
         c1, c2 = st.columns(2)
         with c1:
-            st.plotly_chart(minute_histogram(match_ev, "Minute Distribution", color_col="corner_team"), use_container_width=True)
+            st.plotly_chart(minute_histogram(match_ev, "Minute Distribution", color_col="set_piece_type"), use_container_width=True)
         with c2:
-            st.plotly_chart(cumulative_line(match_ev, "Cumulative Corners"), use_container_width=True)
+            st.plotly_chart(cumulative_line(match_ev, "Cumulative Set Pieces"), use_container_width=True)
 
     with tabs[2]:
         shot_df = match_ev.dropna(subset=["shot_location_x", "shot_location_y"])
@@ -1440,31 +1369,29 @@ elif page == "🔍 Match Explorer":
             empty_state("No shot data.")
         else:
             st.plotly_chart(
-                shotmap_figure(shot_df, color_col="corner_team", title=f"Shotmap — {sel_match}", side_focus=side_focus),
+                shotmap_figure(shot_df, color_col="set_piece_type", title=f"Shotmap — {sel_match}", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[3]:
-        del_df = match_ev.dropna(subset=["pass_location_x", "pass_location_y",
-                                          "pass_end_location_x", "pass_end_location_y"])
+        del_df = match_ev.dropna(subset=["pass_location_x", "pass_location_y"])
         if del_df.empty:
             empty_state("No delivery data.")
         else:
             st.plotly_chart(
-                delivery_map_figure(del_df, "delivery_zone", f"Delivery Map — {sel_match}", side_focus=side_focus),
+                delivery_map_figure(del_df, "set_piece_type", f"Delivery Map — {sel_match}", side_focus=side_focus),
                 use_container_width=True,
             )
 
     with tabs[4]:
         show_cols = [c for c in [
-            "Match", "corner_team", "Taker", "Shooter", "Minute", "Second",
-            "SP_outcome", "shot_xg", "pass_technique", "side", "delivery_zone", "end_zone", "phase"
+            "Match", "corner_team", "set_piece_type", "Taker", "Shooter", "Minute", "Second",
+            "shot_outcome", "shot_xg", "pass_height", "side", "delivery_zone", "end_zone", "phase"
         ] if c in match_ev.columns]
-        st.dataframe(match_ev[show_cols].sort_values(["Minute", "Second"]).reset_index(drop=True),
-                     use_container_width=True, height=560)
+        st.dataframe(match_ev[show_cols].sort_values(["Minute", "Second"]).reset_index(drop=True), use_container_width=True, height=560)
 
 elif page == "👤 Scouting Center":
-    tabs = st.tabs(["🏅 Teams", "👤 Takers", "🔀 Compare", "🛡 Scout Report"])
+    tabs = st.tabs(["🏅 Teams", "👤 Takers", "⚽ Types"])
 
     with tabs[0]:
         if league_team_df.empty:
@@ -1479,134 +1406,58 @@ elif page == "👤 Scouting Center":
         if league_taker_df.empty:
             empty_state("No taker data.")
         else:
-            min_corners_scout = st.number_input("Minimum corners", 1, 50, 5)
-            filt = league_taker_df[league_taker_df["corners"] >= min_corners_scout]
+            min_events_scout = st.number_input("Minimum events", 1, 100, 5)
+            filt = league_taker_df[league_taker_df["events"] >= min_events_scout]
             st.dataframe(filt.reset_index(drop=True), use_container_width=True, height=460)
             c1, c2 = st.columns(2)
             with c1:
-                st.plotly_chart(taker_bar_chart(filt, "xg_per_corner", "Top Takers — xG/Corner", min_corners=min_corners_scout), use_container_width=True)
+                st.plotly_chart(taker_bar_chart(filt, "xg_per_event", "Top Takers — xG/Event", min_events=min_events_scout), use_container_width=True)
             with c2:
-                st.plotly_chart(taker_bar_chart(filt, "shot_rate", "Top Takers — Shot Rate", min_corners=min_corners_scout), use_container_width=True)
+                st.plotly_chart(taker_bar_chart(filt, "shot_rate", "Top Takers — Shot Rate", min_events=min_events_scout), use_container_width=True)
 
     with tabs[2]:
-        teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
-        if len(teams) < 2:
-            empty_state("Need at least 2 teams.")
-        else:
-            c1, c2 = st.columns(2)
-            with c1:
-                team_a = st.selectbox("Team A", teams, key="cmp_a")
-            with c2:
-                team_b = st.selectbox("Team B", teams, index=min(1, len(teams)-1), key="cmp_b")
-
-            a = league_team_df[league_team_df["team"] == team_a].iloc[0]
-            b = league_team_df[league_team_df["team"] == team_b].iloc[0]
-            comp = pd.DataFrame({
-                "Metric": ["Corners/Match", "Shot Rate", "xG/Match", "6Y Delivery Rate", "Short Corner Rate", "Inswinger Rate"],
-                team_a: [a["corners_per_match"], a["shot_rate"], a["xg_per_match"],
-                         a["six_yard_delivery_rate"], a["short_corner_rate"], a["inswinger_rate"]],
-                team_b: [b["corners_per_match"], b["shot_rate"], b["xg_per_match"],
-                         b["six_yard_delivery_rate"], b["short_corner_rate"], b["inswinger_rate"]],
-            })
-            st.dataframe(comp, use_container_width=True, height=300)
-
-            ev_a = league_event_df[league_event_df["corner_team"] == team_a]
-            ev_b = league_event_df[league_event_df["corner_team"] == team_b]
-            c3, c4 = st.columns(2)
-            with c3:
-                shot_a = ev_a.dropna(subset=["shot_location_x", "shot_location_y"])
-                if shot_a.empty:
-                    empty_state(f"No shots — {team_a}")
-                else:
-                    st.plotly_chart(shotmap_figure(shot_a, "corner_team", f"Shotmap — {team_a}", side_focus=side_focus), use_container_width=True)
-            with c4:
-                shot_b = ev_b.dropna(subset=["shot_location_x", "shot_location_y"])
-                if shot_b.empty:
-                    empty_state(f"No shots — {team_b}")
-                else:
-                    st.plotly_chart(shotmap_figure(shot_b, "corner_team", f"Shotmap — {team_b}", side_focus=side_focus), use_container_width=True)
-
-    with tabs[3]:
-        scout_teams = sorted(league_team_df["team"].dropna().unique().tolist()) if not league_team_df.empty else []
-        if not scout_teams:
+        if league_sp_df.empty:
             empty_state()
         else:
-            opp = st.selectbox("Select Opposition", scout_teams)
-            opp_ev   = league_event_df[league_event_df["corner_team"] == opp]
-            opp_row  = league_team_df[league_team_df["team"] == opp]
-            opp_takers = taker_summary(opp_ev)
-
-            if opp_ev.empty or opp_row.empty:
-                empty_state("Not enough data.")
-            else:
-                r        = opp_row.iloc[0]
-                dom_tech = opp_ev["pass_technique"].value_counts()
-                dom_zone = opp_ev["end_zone"].value_counts()
-                dom_side = opp_ev["side"].value_counts()
-                top_taker= opp_takers.iloc[0]["Taker"] if not opp_takers.empty else "Unknown"
-
-                zone_rec  = ("Protect the 6-yard area aggressively."
-                             if (not dom_zone.empty and dom_zone.index[0] == "6-yard box")
-                             else "Standard zonal coverage is acceptable.")
-                short_rec = " Watch for short corners." if r.get("short_corner_rate", 0) > 0.15 else ""
-                inswing_rec= " Prepare for inswinging delivery patterns." if r.get("inswinger_rate", 0) > 0.30 else ""
-
-                st.markdown(f"""
-                <div class="insight-box">
-                    <div style="font-size:1.2rem;font-weight:800;margin-bottom:10px">Scout Report — {opp}</div>
-                    <div style="line-height:1.8;color:{MUTED}">
-                        <b>Threat level:</b> {opp} generate <b>{human_pct(r.get('shot_rate'))}</b> shot rate and
-                        <b>{human_val(r.get('xg_per_match'), 3)} xG/match</b> from corners.<br><br>
-                        <b>Primary delivery:</b> {dom_tech.index[0] if not dom_tech.empty else 'Unknown'}<br>
-                        <b>Main target zone:</b> {dom_zone.index[0] if not dom_zone.empty else 'Unknown'}<br>
-                        <b>Preferred side:</b> {dom_side.index[0] if not dom_side.empty else 'Unknown'}<br>
-                        <b>Primary taker:</b> {top_taker}<br><br>
-                        <b>Recommendations:</b> {zone_rec}{short_rec}{inswing_rec}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.dataframe(league_sp_df.reset_index(drop=True), use_container_width=True, height=320)
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = px.bar(league_sp_df, x="set_piece_type", y="events", color="set_piece_type", color_discrete_sequence=QUAL_PALETTE)
+                st.plotly_chart(figure_layout(fig, 360, "Volume by Set Piece Type"), use_container_width=True)
+            with c2:
+                fig = px.bar(league_sp_df, x="set_piece_type", y="shot_rate", color="set_piece_type", color_discrete_sequence=QUAL_PALETTE)
+                fig.update_yaxes(tickformat=".0%")
+                st.plotly_chart(figure_layout(fig, 360, "Shot Rate by Set Piece Type"), use_container_width=True)
 
 elif page == "📈 Trend Lab":
-    tabs = st.tabs(["📉 Rolling", "📊 Match Trends", "🕐 Phase Trends", "🧮 Tests"])
+    tabs = st.tabs(["📊 Match Trends", "🕐 Phase Trends", "🧮 Tests"])
 
     with tabs[0]:
-        window = st.slider("Rolling window", 2, 10, 5)
-        st.plotly_chart(rolling_shot_rate(league_event_df, window=window, title=f"Rolling Shot Rate ({window}-match)"), use_container_width=True)
-
-    with tabs[1]:
         if league_event_df.empty:
             empty_state()
         else:
-            mv = (
-                league_event_df.groupby(["Match", "corner_team"], dropna=False)
-                .size().reset_index(name="corners").sort_values("Match")
-            )
-            fig = px.line(mv, x="Match", y="corners", color="corner_team", markers=True,
-                          title="Corners per Match", color_discrete_sequence=QUAL_PALETTE)
+            mv = league_event_df.groupby(["Match", "set_piece_type"], dropna=False).size().reset_index(name="events").sort_values("Match")
+            fig = px.line(mv, x="Match", y="events", color="set_piece_type", markers=True, title="Set Pieces per Match", color_discrete_sequence=QUAL_PALETTE)
             fig.update_layout(xaxis_tickangle=-30)
-            st.plotly_chart(figure_layout(fig, 400, "Corners per Match"), use_container_width=True)
+            st.plotly_chart(figure_layout(fig, 400, "Set Pieces per Match"), use_container_width=True)
 
-    with tabs[2]:
-        st.plotly_chart(phase_heatmap(league_event_df, "Corner Phase Pattern"), use_container_width=True)
+    with tabs[1]:
+        st.plotly_chart(phase_heatmap(league_event_df, "Set Piece Phase Pattern"), use_container_width=True)
         ph_sr = (
-            league_event_df.groupby(["phase", "corner_team"], dropna=False)
-            .agg(corners=("match_id", "size"), shots=("led_to_shot", "sum")).reset_index()
+            league_event_df.groupby(["phase", "set_piece_type"], dropna=False)
+            .agg(events=("match_id", "size"), shots=("led_to_shot", "sum")).reset_index()
         )
-        ph_sr["shot_rate"] = ph_sr["shots"] / ph_sr["corners"].replace(0, np.nan)
-        fig = px.line(ph_sr, x="phase", y="shot_rate", color="corner_team", markers=True,
-                      title="Shot Rate Across Phases", color_discrete_sequence=QUAL_PALETTE)
+        ph_sr["shot_rate"] = ph_sr["shots"] / ph_sr["events"].replace(0, np.nan)
+        fig = px.line(ph_sr, x="phase", y="shot_rate", color="set_piece_type", markers=True, title="Shot Rate Across Phases", color_discrete_sequence=QUAL_PALETTE)
         fig.update_layout(yaxis_tickformat=".0%")
         st.plotly_chart(figure_layout(fig, 380, "Shot Rate Across Phases"), use_container_width=True)
 
-    with tabs[3]:
+    with tabs[2]:
         section_header("Statistical Tests")
-        ct_df = league_event_df[
-            league_event_df["pass_technique"].astype(str).str.contains("swing|short", case=False, na=False)
-        ].copy()
+        ct_df = league_event_df[league_event_df["set_piece_type"].isin(["Corner", "Free Kick", "Throw-In"])].copy()
         if len(ct_df) >= 10:
-            ct_df["swing_type"] = np.where(ct_df["is_inswinger"], "Inswinger", "Outswinger/Other")
-            ct_df["shot_yn"]    = np.where(ct_df["led_to_shot"],  "Shot",      "No Shot")
-            cont = pd.crosstab(ct_df["swing_type"], ct_df["shot_yn"])
+            ct_df["shot_yn"] = np.where(ct_df["led_to_shot"], "Shot", "No Shot")
+            cont = pd.crosstab(ct_df["set_piece_type"], ct_df["shot_yn"])
             st.dataframe(cont)
             try:
                 chi2, p, dof, _ = scipy_stats.chi2_contingency(cont)
@@ -1616,281 +1467,60 @@ elif page == "📈 Trend Lab":
         else:
             empty_state("Not enough data for chi-square test.")
 
+elif page == "⚽ Set Piece Types":
+    section_header("Set Piece Types", "Dedicated comparison for corners, free kicks and throw-ins.")
+    if league_sp_df.empty:
+        empty_state()
+    else:
+        render_kpis(league_event_df)
+        st.dataframe(league_sp_df.reset_index(drop=True), use_container_width=True, height=260)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            fig = px.bar(league_sp_df, x="set_piece_type", y="events_per_match", color="set_piece_type", color_discrete_sequence=QUAL_PALETTE)
+            st.plotly_chart(figure_layout(fig, 340, "Events per Match"), use_container_width=True)
+        with c2:
+            fig = px.bar(league_sp_df, x="set_piece_type", y="shot_rate", color="set_piece_type", color_discrete_sequence=QUAL_PALETTE)
+            fig.update_yaxes(tickformat=".0%")
+            st.plotly_chart(figure_layout(fig, 340, "Shot Rate"), use_container_width=True)
+        with c3:
+            fig = px.bar(league_sp_df, x="set_piece_type", y="xg_per_event", color="set_piece_type", color_discrete_sequence=QUAL_PALETTE)
+            st.plotly_chart(figure_layout(fig, 340, "xG per Event"), use_container_width=True)
+
 elif page == "⏱ Delay Time":
     section_header("Delay Time", "Delay between detected corner events and matched events from the uploaded delay workbook.")
-
     if delay_df.empty:
         empty_state("No delay workbook data found.")
     else:
-        valid_delay = delay_df.dropna(subset=["avg_delay_sec", "median_delay_sec"]).copy()
-
-        total_matches = len(delay_df)
-        matched_matches = int(delay_df["corners_matched"].fillna(0).gt(0).sum())
-        total_found = int(delay_df["corners_found"].fillna(0).sum())
-        total_matched = int(delay_df["corners_matched"].fillna(0).sum())
-
-        avg_delay = valid_delay["avg_delay_sec"].mean() if not valid_delay.empty else np.nan
-        median_delay = valid_delay["median_delay_sec"].median() if not valid_delay.empty else np.nan
-        max_delay = valid_delay["max_delay_sec"].max() if "max_delay_sec" in valid_delay.columns and not valid_delay.empty else np.nan
-
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        with c1:
-            metric_card("Matches", f"{total_matches:,}", "Rows in summary")
-        with c2:
-            metric_card("Matched Matches", f"{matched_matches:,}", "With matched corners")
-        with c3:
-            metric_card("Corners Found", f"{total_found:,}", "Detected corners")
-        with c4:
-            metric_card("Corners Matched", f"{total_matched:,}", "Matched corners")
-        with c5:
-            metric_card("Avg Delay", human_val(avg_delay, 2) if not pd.isna(avg_delay) else "—", "Seconds")
-        with c6:
-            metric_card("Max Delay", human_val(max_delay, 2) if not pd.isna(max_delay) else "—", "Seconds")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        tabs = st.tabs(["📊 Overview", "📈 Delay Charts", "📋 Match Table"])
-
-        with tabs[0]:
-            c1, c2 = st.columns(2)
-
-            with c1:
-                if valid_delay.empty:
-                    empty_state("No valid delay values available.")
-                else:
-                    fig = px.histogram(
-                        valid_delay,
-                        x="avg_delay_sec",
-                        nbins=20,
-                        title="Average Delay Distribution",
-                        color_discrete_sequence=[ACCENT],
-                    )
-                    fig.update_traces(opacity=0.85)
-                    st.plotly_chart(
-                        figure_layout(fig, 380, "Average Delay Distribution"),
-                        use_container_width=True,
-                    )
-
-            with c2:
-                if valid_delay.empty:
-                    empty_state("No valid delay values available.")
-                else:
-                    fig = px.scatter(
-                        valid_delay,
-                        x="corners_found",
-                        y="avg_delay_sec",
-                        size="corners_matched",
-                        hover_name="match_label",
-                        title="Delay vs Corners Found",
-                        color_discrete_sequence=[ACCENT],
-                    )
-                    st.plotly_chart(
-                        figure_layout(fig, 380, "Delay vs Corners Found"),
-                        use_container_width=True,
-                    )
-
-            if not valid_delay.empty:
-                top_slowest = valid_delay.sort_values("avg_delay_sec", ascending=False).head(3)
-                cols = st.columns(min(3, len(top_slowest)))
-
-                for i, (_, row) in enumerate(top_slowest.iterrows()):
-                    with cols[i]:
-                        insight_box(
-                            f"Slowest Match #{i+1}",
-                            f"{row['match_label']}<br>"
-                            f"Avg: <b>{human_val(row['avg_delay_sec'], 2)}s</b><br>"
-                            f"Median: <b>{human_val(row['median_delay_sec'], 2)}s</b><br>"
-                            f"Matched: <b>{int(row['corners_matched']) if not pd.isna(row['corners_matched']) else 0}</b>"
-                        )
-
-        with tabs[1]:
-            if valid_delay.empty:
-                empty_state("No valid delay values available.")
-            else:
-                c1, c2 = st.columns(2)
-
-                with c1:
-                    plot_df = valid_delay.sort_values("avg_delay_sec", ascending=False).head(20)
-                    fig = px.bar(
-                        plot_df,
-                        x="match_label",
-                        y="avg_delay_sec",
-                        hover_data=["median_delay_sec", "min_delay_sec", "max_delay_sec", "corners_matched"],
-                        title="Top 20 Matches by Average Delay",
-                        color="avg_delay_sec",
-                        color_continuous_scale="Blues",
-                    )
-                    fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-40)
-                    st.plotly_chart(
-                        figure_layout(fig, 420, "Top 20 Matches by Average Delay"),
-                        use_container_width=True,
-                    )
-
-                with c2:
-                    melt_cols = [c for c in ["min_delay_sec", "median_delay_sec", "avg_delay_sec", "max_delay_sec"] if c in valid_delay.columns]
-                    long_df = valid_delay[["match_label"] + melt_cols].melt(
-                        id_vars="match_label",
-                        value_vars=melt_cols,
-                        var_name="metric",
-                        value_name="seconds",
-                    ).dropna()
-
-                    fig = px.box(
-                        long_df,
-                        x="metric",
-                        y="seconds",
-                        title="Delay Metric Spread",
-                        color="metric",
-                        color_discrete_sequence=QUAL_PALETTE,
-                    )
-                    st.plotly_chart(
-                        figure_layout(fig, 420, "Delay Metric Spread"),
-                        use_container_width=True,
-                    )
-
-        with tabs[2]:
-            show_cols = [c for c in [
-                "match_label", "corners_found", "corners_matched",
-                "match_rate", "avg_delay_sec", "median_delay_sec",
-                "min_delay_sec", "max_delay_sec"
-            ] if c in delay_df.columns]
-
-            table_df = delay_df[show_cols].copy()
-            if "match_rate" in table_df.columns:
-                table_df["match_rate"] = table_df["match_rate"].map(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—")
-
-            st.dataframe(
-                table_df.reset_index(drop=True),
-                use_container_width=True,
-                height=520,
-            )
+        st.dataframe(delay_df.reset_index(drop=True), use_container_width=True, height=520)
 
 elif page == "🦘 HOPS":
     section_header("HOPS", "Player duel HOPS ratings based on the uploaded summary workbook.")
-
-    hops_view = hops_df.copy()
-
-    if sel_team != "All Teams":
-        hops_view = hops_view[hops_view["Team"] == sel_team]
-
-    if hops_view.empty:
-        empty_state("No HOPS data for the current filters.")
+    if hops_df.empty:
+        empty_state("No HOPS workbook found.")
     else:
-        avg_rating = hops_view["Rating"].mean()
-        top_rating = hops_view["Rating"].max()
-        top_player = hops_view.loc[hops_view["Rating"].idxmax(), "Player"]
-        unique_players = hops_view["Player"].nunique()
-        unique_teams = hops_view["Team"].nunique()
+        hops_view = hops_df.copy()
+        if sel_team != "All Teams":
+            hops_view = hops_view[hops_view["Team"] == sel_team]
+        if hops_view.empty:
+            empty_state("No HOPS data for the current filters.")
+        else:
+            avg_rating = hops_view["Rating"].mean()
+            top_rating = hops_view["Rating"].max()
+            top_player = hops_view.loc[hops_view["Rating"].idxmax(), "Player"]
+            unique_players = hops_view["Player"].nunique()
+            unique_teams = hops_view["Team"].nunique()
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            metric_card("Players", f"{unique_players:,}", "In current view")
-        with c2:
-            metric_card("Teams", f"{unique_teams:,}", "Represented")
-        with c3:
-            metric_card("Avg Rating", f"{avg_rating:.3f}", "Mean HOPS")
-        with c4:
-            metric_card("Best Rating", f"{top_rating:.3f}", "Top score")
-        with c5:
-            metric_card("Top Player", top_player, "Highest HOPS")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1: metric_card("Players", f"{unique_players:,}", "In current view")
+            with c2: metric_card("Teams", f"{unique_teams:,}", "Represented")
+            with c3: metric_card("Avg Rating", f"{avg_rating:.3f}", "Mean HOPS")
+            with c4: metric_card("Best Rating", f"{top_rating:.3f}", "Top score")
+            with c5: metric_card("Top Player", top_player, "Highest HOPS")
 
-        tabs = st.tabs(["🏅 Rankings", "📊 Team View", "🔍 Player Lookup"])
-
-        with tabs[0]:
-            rank_df = hops_view.copy()
-            rank_df["Percentile"] = rank_df["Percentile"].map(lambda x: f"{x:.1f}")
-            st.dataframe(
-                rank_df[["Rank", "Player", "Team", "Rating", "Percentile"]].reset_index(drop=True),
-                use_container_width=True,
-                height=560,
-            )
-
-            top_n = st.slider("Top players to display", 5, min(50, len(hops_view)), min(20, len(hops_view)), key="hops_top_n")
-            plot_df = hops_view.head(top_n).sort_values("Rating", ascending=True)
-
-            fig = px.bar(
-                plot_df,
-                x="Rating",
-                y="Player",
-                color="Team",
-                orientation="h",
-                hover_data=["Rank"],
-                title=f"Top {top_n} HOPS Ratings",
-                color_discrete_sequence=QUAL_PALETTE,
-            )
-            st.plotly_chart(figure_layout(fig, 560, f"Top {top_n} HOPS Ratings"), use_container_width=True)
-
-        with tabs[1]:
-            team_hops = (
-                hops_view.groupby("Team", dropna=False)
-                .agg(
-                    players=("Player", "nunique"),
-                    avg_rating=("Rating", "mean"),
-                    max_rating=("Rating", "max"),
-                    median_rating=("Rating", "median"),
-                )
-                .reset_index()
-                .sort_values(["avg_rating", "max_rating"], ascending=False)
-            )
-
-            st.dataframe(team_hops, use_container_width=True, height=420)
-
-            fig = px.scatter(
-                team_hops,
-                x="players",
-                y="avg_rating",
-                size="max_rating",
-                text="Team",
-                hover_name="Team",
-                title="Team HOPS Profile",
-                color_discrete_sequence=[ACCENT],
-            )
-            fig.update_traces(textposition="top center")
-            st.plotly_chart(figure_layout(fig, 440, "Team HOPS Profile"), use_container_width=True)
-
-        with tabs[2]:
-            player_options = sorted(hops_view["Player"].unique().tolist())
-            selected_player = st.selectbox("Select player", player_options, key="hops_player_select")
-
-            player_row = hops_view[hops_view["Player"] == selected_player]
-            if player_row.empty:
-                empty_state("Player not found.")
-            else:
-                r = player_row.iloc[0]
-                team_pool = hops_df[hops_df["Team"] == r["Team"]].copy()
-
-                team_rank = team_pool.sort_values("Rating", ascending=False).reset_index(drop=True)
-                team_rank["Team Rank"] = team_rank.index + 1
-                team_rank_val = int(team_rank.loc[team_rank["Player"] == selected_player, "Team Rank"].iloc[0])
-
-                league_pct = percentile_rank(hops_df["Rating"], r["Rating"])
-
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    metric_card("Player", r["Player"], r["Team"])
-                with c2:
-                    metric_card("Rating", f"{r['Rating']:.3f}", "HOPS")
-                with c3:
-                    metric_card("League Percentile", f"{league_pct:.0f}th", "Among all players")
-                with c4:
-                    metric_card("Team Rank", f"#{team_rank_val}", f"Within {r['Team']}")
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                nearby = hops_df.copy()
-                nearby["gap"] = (nearby["Rating"] - r["Rating"]).abs()
-                nearby = nearby.sort_values(["gap", "Rating"], ascending=[True, False]).head(8)
-
-                st.markdown("#### Similar ratings")
-                st.dataframe(
-                    nearby[["Player", "Team", "Rating", "Rank"]].reset_index(drop=True),
-                    use_container_width=True,
-                    height=320,
-                )
+            st.dataframe(hops_view[["Rank", "Player", "Team", "Rating", "Percentile"]].reset_index(drop=True), use_container_width=True, height=560)
 
 elif page == "🗂 Data Hub":
-    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "🦘 HOPS", "⏱ Delay", "⬇ Downloads"])
-
+    tabs = st.tabs(["📄 Events", "🏟 Teams", "📋 Matches", "👤 Takers", "⚽ SP Types", "🦘 HOPS", "⏱ Delay", "⬇ Downloads"])
     with tabs[0]:
         st.dataframe(league_event_df.reset_index(drop=True), use_container_width=True, height=600)
     with tabs[1]:
@@ -1900,12 +1530,14 @@ elif page == "🗂 Data Hub":
     with tabs[3]:
         st.dataframe(league_taker_df.reset_index(drop=True), use_container_width=True, height=600)
     with tabs[4]:
-        st.dataframe(hops_df.reset_index(drop=True), use_container_width=True, height=600)
+        st.dataframe(league_sp_df.reset_index(drop=True), use_container_width=True, height=420)
     with tabs[5]:
+        st.dataframe(hops_df.reset_index(drop=True), use_container_width=True, height=600)
+    with tabs[6]:
         st.dataframe(delay_df.reset_index(drop=True), use_container_width=True, height=600)
 
-    with tabs[6]:
-        c1, c2, c3, c4, c5 = st.columns(5)
+    with tabs[7]:
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         with c1:
             st.download_button("⬇ Events CSV", league_event_df.to_csv(index=False).encode(), "events.csv", "text/csv", use_container_width=True)
         with c2:
@@ -1913,22 +1545,21 @@ elif page == "🗂 Data Hub":
         with c3:
             st.download_button("⬇ Matches CSV", league_match_df.to_csv(index=False).encode(), "matches.csv", "text/csv", use_container_width=True)
         with c4:
-            st.download_button("⬇ HOPS CSV", hops_df.to_csv(index=False).encode(), "hops.csv", "text/csv", use_container_width=True)
+            st.download_button("⬇ Set Piece Types CSV", league_sp_df.to_csv(index=False).encode(), "sp_types.csv", "text/csv", use_container_width=True)
         with c5:
+            st.download_button("⬇ HOPS CSV", hops_df.to_csv(index=False).encode(), "hops.csv", "text/csv", use_container_width=True)
+        with c6:
             st.download_button("⬇ Delay CSV", delay_df.to_csv(index=False).encode(), "delay.csv", "text/csv", use_container_width=True)
 
-        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df, hops_df, delay_df)
+        wb = download_excel_workbook(league_event_df, league_team_df, league_match_df, league_taker_df, hops_df, delay_df, league_sp_df)
         if wb:
             st.download_button(
-                "⬇ Full Excel Workbook", wb, "allsvenskan_corners.xlsx",
+                "⬇ Full Excel Workbook", wb, "allsvenskan_set_pieces.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
 
-# =========================================================
-# FOOTER
-# =========================================================
 st.markdown(
-    f'<div class="footer-note">⚽ Allsvenskan Set Piece Studio Pro · Cleaner UX build · 2025 Season · Streamlit + Plotly</div>',
+    f'<div class="footer-note">⚽ Allsvenskan Set Piece Studio Pro · Set-piece build · Corners + Free Kicks + Throw-Ins · Streamlit + Plotly</div>',
     unsafe_allow_html=True,
 )
