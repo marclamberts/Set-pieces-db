@@ -1,860 +1,1039 @@
-import React, { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  BarChart3,
-  Crosshair,
-  ChevronLeft,
-  Goal,
-  Shield,
-  Users,
-  Upload,
-  Filter,
-  Map,
-  Table2,
-  Activity,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ScatterChart,
-  Scatter,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import io
+import os
+import warnings
+from typing import Optional
 
-type SetPieceType = "Corner" | "Free Kick" | "Throw-In";
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
-type EventRow = {
-  match_id: string;
-  Match: string;
-  team: string;
-  Minute: number;
-  Second: number;
-  Taker: string;
-  Shooter: string;
-  set_piece_type: SetPieceType;
-  shot_xg: number;
-  led_to_shot: boolean;
-  goal: boolean;
-  side: "Left" | "Right" | "Unknown";
-  delivery_zone: string;
-  end_zone: string;
-  phase: string;
-  shot_location_x?: number;
-  shot_location_y?: number;
-  pass_location_x?: number;
-  pass_location_y?: number;
-  pass_end_location_x?: number;
-  pass_end_location_y?: number;
-};
+warnings.filterwarnings("ignore")
 
-const TYPE_META: Record<SetPieceType, { color: string; accent: string; desc: string; icon: React.ReactNode }> = {
-  Corner: {
-    color: "from-sky-500/20 to-sky-500/5",
-    accent: "bg-sky-400",
-    desc: "Wide dead-ball delivery, targeting, taker profiles, and shot creation.",
-    icon: <Goal className="h-5 w-5" />,
-  },
-  "Free Kick": {
-    color: "from-emerald-500/20 to-emerald-500/5",
-    accent: "bg-emerald-400",
-    desc: "Direct and indirect routines, delivery quality, and final-third threat.",
-    icon: <Crosshair className="h-5 w-5" />,
-  },
-  "Throw-In": {
-    color: "from-orange-500/20 to-orange-500/5",
-    accent: "bg-orange-400",
-    desc: "Attacking throw-ins, long-throw patterns, zones, and team usage.",
-    icon: <Shield className="h-5 w-5" />,
-  },
-};
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+st.set_page_config(
+    page_title="Allsvenskan Set Piece Studio",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-const PIE_COLORS = ["#38bdf8", "#34d399", "#fb923c", "#a78bfa", "#fbbf24", "#fb7185"];
+# =========================================================
+# THEME
+# =========================================================
+BG = "#07111f"
+BG_2 = "#0b1730"
+CARD = "#101a2b"
+CARD_2 = "#16243a"
+TEXT = "#f3f7fc"
+MUTED = "#99adc7"
+MUTED_2 = "#6b87a8"
+ACCENT = "#5da8ff"
+SUCCESS = "#34d399"
+WARNING = "#fbbf24"
+DANGER = "#fb7185"
+PURPLE = "#a78bfa"
+ORANGE = "#fb923c"
+BORDER = "rgba(255,255,255,0.08)"
 
-const demoData: EventRow[] = [
-  {
-    match_id: "1",
-    Match: "Malmö FF - AIK",
-    team: "Malmö FF",
-    Minute: 12,
-    Second: 14,
-    Taker: "Player A",
-    Shooter: "Player B",
-    set_piece_type: "Corner",
-    shot_xg: 0.11,
-    led_to_shot: true,
-    goal: false,
-    side: "Left",
-    delivery_zone: "Central Zone",
-    end_zone: "Penalty area",
-    phase: "0-15",
-    shot_location_x: 109,
-    shot_location_y: 39,
-    pass_location_x: 120,
-    pass_location_y: 64,
-    pass_end_location_x: 109,
-    pass_end_location_y: 39,
-  },
-  {
-    match_id: "1",
-    Match: "Malmö FF - AIK",
-    team: "AIK",
-    Minute: 28,
-    Second: 2,
-    Taker: "Player C",
-    Shooter: "Player D",
-    set_piece_type: "Free Kick",
-    shot_xg: 0.07,
-    led_to_shot: true,
-    goal: false,
-    side: "Right",
-    delivery_zone: "Near Post Zone",
-    end_zone: "Deep box",
-    phase: "16-30",
-    shot_location_x: 103,
-    shot_location_y: 25,
-    pass_location_x: 92,
-    pass_location_y: 21,
-    pass_end_location_x: 103,
-    pass_end_location_y: 25,
-  },
-  {
-    match_id: "2",
-    Match: "Hammarby - Djurgården",
-    team: "Hammarby",
-    Minute: 53,
-    Second: 44,
-    Taker: "Player E",
-    Shooter: "Player F",
-    set_piece_type: "Throw-In",
-    shot_xg: 0.18,
-    led_to_shot: true,
-    goal: true,
-    side: "Left",
-    delivery_zone: "Far Post Zone",
-    end_zone: "6-yard box",
-    phase: "46-60",
-    shot_location_x: 116,
-    shot_location_y: 52,
-    pass_location_x: 96,
-    pass_location_y: 62,
-    pass_end_location_x: 116,
-    pass_end_location_y: 52,
-  },
-  {
-    match_id: "2",
-    Match: "Hammarby - Djurgården",
-    team: "Djurgården",
-    Minute: 72,
-    Second: 10,
-    Taker: "Player G",
-    Shooter: "",
-    set_piece_type: "Corner",
-    shot_xg: 0,
-    led_to_shot: false,
-    goal: false,
-    side: "Right",
-    delivery_zone: "Near Post Zone",
-    end_zone: "Outside danger zone",
-    phase: "61-75",
-    pass_location_x: 120,
-    pass_location_y: 18,
-    pass_end_location_x: 101,
-    pass_end_location_y: 24,
-  },
-  {
-    match_id: "3",
-    Match: "Elfsborg - IFK Göteborg",
-    team: "Elfsborg",
-    Minute: 81,
-    Second: 5,
-    Taker: "Player H",
-    Shooter: "Player I",
-    set_piece_type: "Free Kick",
-    shot_xg: 0.22,
-    led_to_shot: true,
-    goal: true,
-    side: "Left",
-    delivery_zone: "Central Zone",
-    end_zone: "6-yard box",
-    phase: "76+",
-    shot_location_x: 115,
-    shot_location_y: 40,
-    pass_location_x: 88,
-    pass_location_y: 60,
-    pass_end_location_x: 115,
-    pass_end_location_y: 40,
-  },
-  {
-    match_id: "3",
-    Match: "Elfsborg - IFK Göteborg",
-    team: "IFK Göteborg",
-    Minute: 9,
-    Second: 20,
-    Taker: "Player J",
-    Shooter: "",
-    set_piece_type: "Throw-In",
-    shot_xg: 0,
-    led_to_shot: false,
-    goal: false,
-    side: "Right",
-    delivery_zone: "Central Zone",
-    end_zone: "Penalty area",
-    phase: "0-15",
-    pass_location_x: 94,
-    pass_location_y: 17,
-    pass_end_location_x: 108,
-    pass_end_location_y: 37,
-  },
-];
-
-function groupCount<T>(rows: T[], keyFn: (row: T) => string) {
-  const map = new Map<string, number>();
-  rows.forEach((row) => {
-    const key = keyFn(row) || "Unknown";
-    map.set(key, (map.get(key) || 0) + 1);
-  });
-  return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+TYPE_COLORS = {
+    "Corner": ACCENT,
+    "Free Kick": SUCCESS,
+    "Throw-In": ORANGE,
+    "Other": PURPLE,
 }
 
-function mean(arr: number[]) {
-  if (!arr.length) return 0;
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-}
+QUAL_PALETTE = [ACCENT, SUCCESS, WARNING, DANGER, PURPLE, ORANGE, "#8ad6ff", "#6ee7b7"]
+px.defaults.template = "plotly_dark"
 
-function parseCsv(text: string): EventRow[] {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return [];
+CSS = f"""
+<style>
+body, .stApp {{
+    background:
+        radial-gradient(ellipse 1200px 700px at 90% -10%, rgba(93,168,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 900px 600px at -10% 20%, rgba(52,211,153,0.08) 0%, transparent 55%),
+        linear-gradient(180deg, {BG} 0%, {BG_2} 100%);
+    color: {TEXT};
+}}
+.block-container {{
+    max-width: 1580px;
+    padding-top: 1rem;
+    padding-bottom: 2rem;
+}}
+header[data-testid="stHeader"] {{
+    background: rgba(0,0,0,0);
+}}
+#MainMenu, footer {{
+    visibility: hidden;
+}}
+.hero {{
+    background: linear-gradient(135deg, rgba(93,168,255,0.18) 0%, rgba(93,168,255,0.05) 55%, rgba(52,211,153,0.08) 100%);
+    border: 1px solid rgba(93,168,255,0.18);
+    border-radius: 30px;
+    padding: 34px 34px 26px 34px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.22);
+    margin-bottom: 18px;
+}}
+.hero-title {{
+    font-size: 2.7rem;
+    font-weight: 900;
+    line-height: 1.0;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.55rem;
+}}
+.hero-title span {{
+    color: {ACCENT};
+}}
+.hero-sub {{
+    color: {MUTED};
+    font-size: 1.02rem;
+    line-height: 1.6;
+    max-width: 980px;
+}}
+.upload-bar {{
+    background: linear-gradient(160deg, {CARD} 0%, {CARD_2} 100%);
+    border: 1px solid {BORDER};
+    border-radius: 22px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+}}
+.segment-card {{
+    background: linear-gradient(160deg, {CARD} 0%, {CARD_2} 100%);
+    border: 1px solid {BORDER};
+    border-radius: 26px;
+    padding: 22px 22px 18px 22px;
+    min-height: 245px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+}}
+.segment-pill {{
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: 1px solid rgba(255,255,255,0.12);
+    margin-bottom: 0.9rem;
+}}
+.segment-title {{
+    font-size: 1.5rem;
+    font-weight: 900;
+    margin-bottom: 0.45rem;
+}}
+.segment-sub {{
+    color: {MUTED};
+    font-size: 0.95rem;
+    line-height: 1.58;
+    min-height: 74px;
+}}
+.panel {{
+    background: rgba(255,255,255,0.02);
+    border: 1px solid {BORDER};
+    border-radius: 22px;
+    padding: 18px 18px 12px 18px;
+    margin-bottom: 14px;
+}}
+.kpi {{
+    background: linear-gradient(160deg, {CARD} 0%, {CARD_2} 100%);
+    border: 1px solid {BORDER};
+    border-radius: 18px;
+    padding: 16px 16px 12px 16px;
+    min-height: 102px;
+}}
+.kpi-label {{
+    color: {MUTED};
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+}}
+.kpi-value {{
+    margin-top: 10px;
+    font-size: 1.75rem;
+    font-weight: 900;
+    line-height: 1.0;
+}}
+.kpi-foot {{
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: {MUTED};
+}}
+.section-title {{
+    font-size: 1.12rem;
+    font-weight: 850;
+    margin: 0.1rem 0 0.22rem 0;
+}}
+.section-sub {{
+    color: {MUTED};
+    font-size: 0.92rem;
+    margin-bottom: 0.85rem;
+}}
+.empty-state {{
+    text-align: center;
+    padding: 56px 24px;
+    color: {MUTED};
+    font-size: 0.94rem;
+    border: 1px dashed rgba(255,255,255,0.10);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.015);
+}}
+.pitch-wrap {{
+    border: 1px solid {BORDER};
+    border-radius: 22px;
+    padding: 12px;
+    background: rgba(255,255,255,0.02);
+}}
+.footer-note {{
+    color: {MUTED_2};
+    font-size: 0.82rem;
+    margin-top: 1rem;
+    padding-top: 12px;
+    border-top: 1px solid {BORDER};
+}}
+div[data-testid="stDataFrame"] {{
+    border: 1px solid {BORDER};
+    border-radius: 14px;
+    overflow: hidden;
+}}
+.stTabs [data-baseweb="tab-list"] {{
+    gap: 6px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 14px;
+    padding: 4px;
+    border: 1px solid {BORDER};
+}}
+.stTabs [aria-selected="true"] {{
+    background: rgba(93,168,255,0.18) !important;
+    color: #d4e8ff !important;
+}}
+div.stButton > button {{
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.03);
+    color: {TEXT};
+    font-weight: 700;
+    padding: 0.7rem 0.9rem;
+}}
+div.stButton > button:hover {{
+    border-color: rgba(93,168,255,0.30);
+    background: rgba(93,168,255,0.10);
+}}
+</style>
+"""
+st.markdown(CSS, unsafe_allow_html=True)
 
-  const headers = lines[0].split(",").map((h) => h.trim());
-  return lines.slice(1).map((line, idx) => {
-    const values = line.split(",");
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => {
-      row[h] = values[i] ?? "";
-    });
+# =========================================================
+# HELPERS
+# =========================================================
+def safe_numeric(s):
+    return pd.to_numeric(s, errors="coerce")
 
-    const spRaw = String(row.SP_Type || row.set_piece_type || "Corner");
-    const set_piece_type: SetPieceType = spRaw.toLowerCase().includes("free")
-      ? "Free Kick"
-      : spRaw.toLowerCase().includes("throw")
-        ? "Throw-In"
-        : "Corner";
+def human_pct(v, decimals=1):
+    return "—" if pd.isna(v) else f"{v*100:.{decimals}f}%"
 
-    return {
-      match_id: row.match_id || String(idx + 1),
-      Match: row.Match || row.match || `Match ${idx + 1}`,
-      team: row.team || row["team.name"] || "Unknown",
-      Minute: Number(row.Minute || row.minute || 0),
-      Second: Number(row.Second || row.second || 0),
-      Taker: row.Taker || row.taker || "",
-      Shooter: row.Shooter || row.shooter || "",
-      set_piece_type,
-      shot_xg: Number(row.shot_xg || row["shot.statsbomb_xg"] || 0),
-      led_to_shot: String(row.led_to_shot || row.SP_outcome || "").toLowerCase().includes("shot") || Number(row.shot_xg || 0) > 0,
-      goal: String(row.goal || row.shot_outcome || "").toLowerCase().includes("goal"),
-      side: (row.side as "Left" | "Right" | "Unknown") || "Unknown",
-      delivery_zone: row.delivery_zone || "Unknown",
-      end_zone: row.end_zone || "Unknown",
-      phase: row.phase || "Unknown",
-      shot_location_x: Number(row.shot_location_x || 0) || undefined,
-      shot_location_y: Number(row.shot_location_y || 0) || undefined,
-      pass_location_x: Number(row.pass_location_x || 0) || undefined,
-      pass_location_y: Number(row.pass_location_y || 0) || undefined,
-      pass_end_location_x: Number(row.pass_end_location_x || 0) || undefined,
-      pass_end_location_y: Number(row.pass_end_location_y || 0) || undefined,
-    };
-  });
-}
+def human_val(v, decimals=2):
+    return "—" if pd.isna(v) else f"{v:.{decimals}f}"
 
-function KpiCard({ title, value, foot, icon }: { title: string; value: string; foot: string; icon: React.ReactNode }) {
-  return (
-    <Card className="border-white/10 bg-white/[0.03] backdrop-blur-sm rounded-3xl shadow-xl">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400 font-bold">{title}</p>
-            <p className="mt-3 text-3xl font-black text-white">{value}</p>
-            <p className="mt-2 text-sm text-slate-400">{foot}</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-slate-200">{icon}</div>
+def find_col(df, candidates):
+    lower_map = {str(c).strip().lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand.lower() in lower_map:
+            return lower_map[cand.lower()]
+    for c in df.columns:
+        c_low = str(c).strip().lower()
+        for cand in candidates:
+            if cand.lower() in c_low:
+                return c
+    return None
+
+def parse_xy(cell, idx=0):
+    if pd.isna(cell):
+        return np.nan
+    try:
+        parts = [float(str(x).strip()) for x in str(cell).split(",")]
+        return parts[idx] if len(parts) > idx else np.nan
+    except Exception:
+        return np.nan
+
+def set_piece_bucket(sp_type):
+    s = str(sp_type).lower().strip()
+    if "corner" in s:
+        return "Corner"
+    if "free kick" in s:
+        return "Free Kick"
+    if "throw" in s:
+        return "Throw-In"
+    return "Other"
+
+def side_from_y(y):
+    if pd.isna(y):
+        return "Unknown"
+    return "Right" if y < 40 else "Left"
+
+def delivery_zone_from_y(y):
+    if pd.isna(y):
+        return "Unknown"
+    if y < 30:
+        return "Near Post Zone"
+    if y <= 50:
+        return "Central Zone"
+    return "Far Post Zone"
+
+def zone_from_end_location(x, y):
+    if pd.isna(x) or pd.isna(y):
+        return "Unknown"
+    if x >= 114 and 30 <= y <= 50:
+        return "6-yard box"
+    if x >= 108 and 18 <= y <= 62:
+        return "Penalty area"
+    if x >= 100 and 18 <= y <= 62:
+        return "Deep box"
+    return "Outside danger zone"
+
+def figure_layout(fig, height=420, title=None):
+    fig.update_layout(
+        height=height,
+        title=title,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=8, r=8, t=48 if title else 8, b=8),
+        font=dict(color=TEXT),
+        legend_title_text="",
+        hoverlabel=dict(bgcolor="#0d1c31", font_color=TEXT),
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False)
+    return fig
+
+def section_header(title, sub=""):
+    st.markdown(
+        f'<div class="section-title">{title}</div>' +
+        (f'<div class="section-sub">{sub}</div>' if sub else ""),
+        unsafe_allow_html=True,
+    )
+
+def metric_card(label, value, foot=""):
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-foot">{foot}</div>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+        """,
+        unsafe_allow_html=True,
+    )
 
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <Card className="border-white/10 bg-white/[0.03] rounded-3xl shadow-xl">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-white text-lg font-extrabold">{title}</CardTitle>
-        {subtitle ? <p className="text-sm text-slate-400">{subtitle}</p> : null}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
+def empty_state(msg="No data for current selection."):
+    st.markdown(f'<div class="empty-state">{msg}</div>', unsafe_allow_html=True)
 
-function Landing({ data, onOpen }: { data: EventRow[]; onOpen: (segment: SetPieceType) => void }) {
-  const summary = useMemo(() => {
-    return (Object.keys(TYPE_META) as SetPieceType[]).map((type) => {
-      const rows = data.filter((r) => r.set_piece_type === type);
-      return {
-        type,
-        events: rows.length,
-        matches: new Set(rows.map((r) => r.match_id)).size,
-        shotRate: rows.length ? rows.filter((r) => r.led_to_shot).length / rows.length : 0,
-        xgPerEvent: rows.length ? rows.reduce((s, r) => s + r.shot_xg, 0) / rows.length : 0,
-      };
-    });
-  }, [data]);
+# =========================================================
+# DEMO DATA
+# =========================================================
+def build_demo_data():
+    rows = [
+        {
+            "match_id": "1", "Match": "Malmö FF - AIK", "team": "Malmö FF", "Minute": 12, "Second": 14,
+            "Taker": "Player A", "Shooter": "Player B", "set_piece_type": "Corner", "shot_xg": 0.11,
+            "led_to_shot": True, "goal": False, "side": "Left", "delivery_zone": "Central Zone",
+            "end_zone": "Penalty area", "phase": "0-15", "shot_location_x": 109, "shot_location_y": 39,
+            "pass_location_x": 120, "pass_location_y": 64, "pass_end_location_x": 109, "pass_end_location_y": 39,
+        },
+        {
+            "match_id": "1", "Match": "Malmö FF - AIK", "team": "AIK", "Minute": 28, "Second": 2,
+            "Taker": "Player C", "Shooter": "Player D", "set_piece_type": "Free Kick", "shot_xg": 0.07,
+            "led_to_shot": True, "goal": False, "side": "Right", "delivery_zone": "Near Post Zone",
+            "end_zone": "Deep box", "phase": "16-30", "shot_location_x": 103, "shot_location_y": 25,
+            "pass_location_x": 92, "pass_location_y": 21, "pass_end_location_x": 103, "pass_end_location_y": 25,
+        },
+        {
+            "match_id": "2", "Match": "Hammarby - Djurgården", "team": "Hammarby", "Minute": 53, "Second": 44,
+            "Taker": "Player E", "Shooter": "Player F", "set_piece_type": "Throw-In", "shot_xg": 0.18,
+            "led_to_shot": True, "goal": True, "side": "Left", "delivery_zone": "Far Post Zone",
+            "end_zone": "6-yard box", "phase": "46-60", "shot_location_x": 116, "shot_location_y": 52,
+            "pass_location_x": 96, "pass_location_y": 62, "pass_end_location_x": 116, "pass_end_location_y": 52,
+        },
+        {
+            "match_id": "2", "Match": "Hammarby - Djurgården", "team": "Djurgården", "Minute": 72, "Second": 10,
+            "Taker": "Player G", "Shooter": "", "set_piece_type": "Corner", "shot_xg": 0.00,
+            "led_to_shot": False, "goal": False, "side": "Right", "delivery_zone": "Near Post Zone",
+            "end_zone": "Outside danger zone", "phase": "61-75", "pass_location_x": 120,
+            "pass_location_y": 18, "pass_end_location_x": 101, "pass_end_location_y": 24,
+        },
+        {
+            "match_id": "3", "Match": "Elfsborg - IFK Göteborg", "team": "Elfsborg", "Minute": 81, "Second": 5,
+            "Taker": "Player H", "Shooter": "Player I", "set_piece_type": "Free Kick", "shot_xg": 0.22,
+            "led_to_shot": True, "goal": True, "side": "Left", "delivery_zone": "Central Zone",
+            "end_zone": "6-yard box", "phase": "76+", "shot_location_x": 115, "shot_location_y": 40,
+            "pass_location_x": 88, "pass_location_y": 60, "pass_end_location_x": 115, "pass_end_location_y": 40,
+        },
+        {
+            "match_id": "3", "Match": "Elfsborg - IFK Göteborg", "team": "IFK Göteborg", "Minute": 9, "Second": 20,
+            "Taker": "Player J", "Shooter": "", "set_piece_type": "Throw-In", "shot_xg": 0.00,
+            "led_to_shot": False, "goal": False, "side": "Right", "delivery_zone": "Central Zone",
+            "end_zone": "Penalty area", "phase": "0-15", "pass_location_x": 94,
+            "pass_location_y": 17, "pass_end_location_x": 108, "pass_end_location_y": 37,
+        },
+    ]
+    return pd.DataFrame(rows)
 
-  return (
-    <div className="space-y-8">
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-[2rem] border border-sky-400/20 bg-gradient-to-br from-sky-400/15 via-sky-400/5 to-emerald-400/10 p-8 shadow-2xl"
-      >
-        <div className="max-w-4xl">
-          <p className="mb-3 inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
-            New build
-          </p>
-          <h1 className="text-5xl font-black tracking-tight text-white">
-            Allsvenskan <span className="text-sky-300">Set Piece</span> Studio
-          </h1>
-          <p className="mt-4 text-lg leading-8 text-slate-300">
-            A totally new web app built around one simple landing page: choose <strong>Free Kick</strong>, <strong>Corner</strong>, or <strong>Throw-In</strong> and enter a focused analysis workspace.
-          </p>
-        </div>
-      </motion.div>
+# =========================================================
+# DATA INGEST
+# =========================================================
+def parse_csv_like(df):
+    data = df.copy()
+    data.columns = [str(c).strip() for c in data.columns]
+    _f = lambda *c: find_col(data, list(c))
 
-      <div className="grid gap-5 md:grid-cols-3">
-        {(Object.keys(TYPE_META) as SetPieceType[]).map((type, i) => {
-          const meta = TYPE_META[type];
-          const row = summary.find((s) => s.type === type)!;
-          return (
-            <motion.div
-              key={type}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06 }}
-            >
-              <Card className={`h-full rounded-[2rem] border-white/10 bg-gradient-to-br ${meta.color} shadow-xl`}>
-                <CardContent className="flex h-full flex-col p-6">
-                  <div className="mb-4 flex items-center justify-between">
-                    <Badge className="rounded-full border-white/10 bg-white/10 text-white">Segment</Badge>
-                    <div className="rounded-2xl border border-white/10 bg-white/10 p-3 text-white">{meta.icon}</div>
-                  </div>
-                  <h2 className="text-2xl font-black text-white">{type}</h2>
-                  <p className="mt-3 min-h-[72px] text-sm leading-6 text-slate-300">{meta.desc}</p>
-                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
-                      <p className="text-slate-400">Events</p>
-                      <p className="mt-1 text-2xl font-black text-white">{row.events}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
-                      <p className="text-slate-400">Shot rate</p>
-                      <p className="mt-1 text-2xl font-black text-white">{(row.shotRate * 100).toFixed(0)}%</p>
-                    </div>
-                  </div>
-                  <Button className="mt-6 rounded-2xl bg-white/10 hover:bg-white/20" onClick={() => onOpen(type)}>
-                    Open {type}
-                  </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </div>
+    match_id_col = _f("match_id")
+    match_col = _f("match", "Match")
+    team_col = _f("team", "team.name")
+    minute_col = _f("minute", "Minute")
+    second_col = _f("second", "Second")
+    sp_type_col = _f("SP_Type", "set_piece_type")
+    xg_col = _f("shot_xg", "shot.statsbomb_xg")
+    taker_col = _f("Taker", "taker")
+    shooter_col = _f("Shooter", "shooter")
+    pass_x_col = _f("pass_location_x")
+    pass_y_col = _f("pass_location_y")
+    pass_end_x_col = _f("pass_end_location_x")
+    pass_end_y_col = _f("pass_end_location_y")
+    shot_x_col = _f("shot_location_x")
+    shot_y_col = _f("shot_location_y")
+    side_col = _f("side")
+    delivery_zone_col = _f("delivery_zone")
+    end_zone_col = _f("end_zone")
+    phase_col = _f("phase")
+    led_to_shot_col = _f("led_to_shot")
+    goal_col = _f("goal")
+    pass_raw_col = _f("location.pass")
+    shot_raw_col = _f("location.shot")
+    outcome_col = _f("SP_outcome", "sp_outcome")
+    shot_outcome_col = _f("shot_outcome", "shot.outcome.name")
+    timestamp_col = _f("timestamp")
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <SectionCard title="Volume by segment" subtitle="Top-level navigation starts here">
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                <XAxis dataKey="type" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip />
-                <Bar dataKey="events" radius={[10, 10, 0, 0]}>
-                  {summary.map((s) => (
-                    <Cell key={s.type} fill={TYPE_META[s.type].accent === "bg-sky-400" ? "#38bdf8" : TYPE_META[s.type].accent === "bg-emerald-400" ? "#34d399" : "#fb923c"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
+    if match_id_col is None:
+        data["match_id"] = np.arange(1, len(data) + 1).astype(str)
+        match_id_col = "match_id"
 
-        <SectionCard title="xG per event" subtitle="Quick efficiency comparison">
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                <XAxis dataKey="type" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip />
-                <Bar dataKey="xgPerEvent" fill="#c084fc" radius={[10, 10, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
-      </div>
-    </div>
-  );
-}
+    if match_col is None:
+        data["Match"] = "Match " + data[match_id_col].astype(str)
+        match_col = "Match"
 
-function SegmentStudio({
-  data,
-  segment,
-  onBack,
-}: {
-  data: EventRow[];
-  segment: SetPieceType;
-  onBack: () => void;
-}) {
-  const [team, setTeam] = useState<string>("all");
-  const [side, setSide] = useState<string>("all");
-  const [match, setMatch] = useState<string>("all");
-  const [search, setSearch] = useState("");
+    if team_col is None or sp_type_col is None:
+        raise ValueError("Dataset needs at least team/team.name and SP_Type/set_piece_type columns.")
 
-  const segmentRows = useMemo(() => data.filter((r) => r.set_piece_type === segment), [data, segment]);
+    if minute_col is None and timestamp_col is not None:
+        ts = data[timestamp_col].astype(str).str.split(":", expand=True)
+        if ts.shape[1] >= 3:
+            data["Minute_tmp"] = pd.to_numeric(ts[1], errors="coerce")
+            data["Second_tmp"] = pd.to_numeric(ts[2].str.replace(r"[^0-9.]", "", regex=True), errors="coerce")
+            minute_col = "Minute_tmp"
+            second_col = "Second_tmp"
 
-  const filtered = useMemo(() => {
-    return segmentRows.filter((r) => {
-      const okTeam = team === "all" || r.team === team;
-      const okSide = side === "all" || r.side === side;
-      const okMatch = match === "all" || r.Match === match;
-      const needle = search.toLowerCase();
-      const okSearch = !needle || [r.team, r.Taker, r.Shooter, r.Match].join(" ").toLowerCase().includes(needle);
-      return okTeam && okSide && okMatch && okSearch;
-    });
-  }, [segmentRows, team, side, match, search]);
+    if minute_col is None:
+        data["Minute"] = 0
+        minute_col = "Minute"
+    if second_col is None:
+        data["Second"] = 0
+        second_col = "Second"
 
-  const teams = Array.from(new Set(segmentRows.map((r) => r.team))).sort();
-  const matches = Array.from(new Set(segmentRows.map((r) => r.Match))).sort();
+    out = pd.DataFrame()
+    out["match_id"] = data[match_id_col].astype(str)
+    out["Match"] = data[match_col].astype(str)
+    out["team"] = data[team_col].astype(str)
+    out["Minute"] = safe_numeric(data[minute_col]).fillna(0)
+    out["Second"] = safe_numeric(data[second_col]).fillna(0)
+    out["Taker"] = data[taker_col].astype(str) if taker_col else ""
+    out["Shooter"] = data[shooter_col].astype(str) if shooter_col else ""
+    out["set_piece_type"] = data[sp_type_col].apply(set_piece_bucket)
+    out["shot_xg"] = safe_numeric(data[xg_col]).fillna(0) if xg_col else 0.0
 
-  const kpis = useMemo(() => {
-    const shots = filtered.filter((r) => r.led_to_shot).length;
-    const goals = filtered.filter((r) => r.goal).length;
-    const xg = filtered.reduce((s, r) => s + r.shot_xg, 0);
-    return {
-      events: filtered.length,
-      matches: new Set(filtered.map((r) => r.match_id)).size,
-      shots,
-      goals,
-      shotRate: filtered.length ? shots / filtered.length : 0,
-      xg,
-    };
-  }, [filtered]);
+    if pass_raw_col:
+        out["pass_location_x"] = data[pass_raw_col].apply(lambda x: parse_xy(x, 0))
+        out["pass_location_y"] = data[pass_raw_col].apply(lambda x: parse_xy(x, 1))
+    else:
+        out["pass_location_x"] = safe_numeric(data[pass_x_col]).fillna(np.nan) if pass_x_col else np.nan
+        out["pass_location_y"] = safe_numeric(data[pass_y_col]).fillna(np.nan) if pass_y_col else np.nan
 
-  const endZones = groupCount(filtered, (r) => r.end_zone);
-  const phases = groupCount(filtered, (r) => r.phase);
-  const teamsTable = useMemo(() => {
-    const map = new Map<string, { team: string; events: number; shots: number; xg: number }>();
-    filtered.forEach((r) => {
-      const cur = map.get(r.team) || { team: r.team, events: 0, shots: 0, xg: 0 };
-      cur.events += 1;
-      cur.shots += r.led_to_shot ? 1 : 0;
-      cur.xg += r.shot_xg;
-      map.set(r.team, cur);
-    });
-    return Array.from(map.values())
-      .map((r) => ({ ...r, shotRate: r.events ? r.shots / r.events : 0, xgPerEvent: r.events ? r.xg / r.events : 0 }))
-      .sort((a, b) => b.xgPerEvent - a.xgPerEvent);
-  }, [filtered]);
+    if shot_raw_col:
+        out["shot_location_x"] = data[shot_raw_col].apply(lambda x: parse_xy(x, 0))
+        out["shot_location_y"] = data[shot_raw_col].apply(lambda x: parse_xy(x, 1))
+    else:
+        out["shot_location_x"] = safe_numeric(data[shot_x_col]).fillna(np.nan) if shot_x_col else np.nan
+        out["shot_location_y"] = safe_numeric(data[shot_y_col]).fillna(np.nan) if shot_y_col else np.nan
 
-  const takerTable = useMemo(() => {
-    const map = new Map<string, { taker: string; team: string; events: number; shots: number; xg: number }>();
-    filtered.forEach((r) => {
-      const key = `${r.team}__${r.Taker || "Unknown"}`;
-      const cur = map.get(key) || { taker: r.Taker || "Unknown", team: r.team, events: 0, shots: 0, xg: 0 };
-      cur.events += 1;
-      cur.shots += r.led_to_shot ? 1 : 0;
-      cur.xg += r.shot_xg;
-      map.set(key, cur);
-    });
-    return Array.from(map.values())
-      .map((r) => ({ ...r, shotRate: r.events ? r.shots / r.events : 0, xgPerEvent: r.events ? r.xg / r.events : 0 }))
-      .sort((a, b) => b.events - a.events);
-  }, [filtered]);
+    out["pass_end_location_x"] = safe_numeric(data[pass_end_x_col]).fillna(np.nan) if pass_end_x_col else out["shot_location_x"]
+    out["pass_end_location_y"] = safe_numeric(data[pass_end_y_col]).fillna(np.nan) if pass_end_y_col else out["shot_location_y"]
 
-  const matchTable = useMemo(() => {
-    const map = new Map<string, { match: string; events: number; shots: number; xg: number; goals: number }>();
-    filtered.forEach((r) => {
-      const cur = map.get(r.Match) || { match: r.Match, events: 0, shots: 0, xg: 0, goals: 0 };
-      cur.events += 1;
-      cur.shots += r.led_to_shot ? 1 : 0;
-      cur.xg += r.shot_xg;
-      cur.goals += r.goal ? 1 : 0;
-      map.set(r.Match, cur);
-    });
-    return Array.from(map.values())
-      .map((r) => ({ ...r, shotRate: r.events ? r.shots / r.events : 0 }))
-      .sort((a, b) => b.xg - a.xg);
-  }, [filtered]);
+    if led_to_shot_col:
+        out["led_to_shot"] = data[led_to_shot_col].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        sp_text = data[outcome_col].astype(str) if outcome_col else ""
+        shot_text = data[shot_outcome_col].astype(str) if shot_outcome_col else ""
+        out["led_to_shot"] = (out["shot_xg"] > 0) | sp_text.str.contains("shot|goal", case=False, na=False) | shot_text.str.contains("shot|goal", case=False, na=False)
 
-  const minuteTrend = useMemo(() => {
-    const buckets = Array.from({ length: 6 }).map((_, i) => ({
-      bucket: ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"][i],
-      events: phases.find((p) => p.name === ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"][i])?.value || 0,
-    }));
-    return buckets;
-  }, [phases]);
+    if goal_col:
+        out["goal"] = data[goal_col].astype(str).str.lower().isin(["true", "1", "yes"])
+    else:
+        sp_text = data[outcome_col].astype(str) if outcome_col else ""
+        shot_text = data[shot_outcome_col].astype(str) if shot_outcome_col else ""
+        out["goal"] = sp_text.str.contains("goal", case=False, na=False) | shot_text.str.contains("goal", case=False, na=False)
 
-  const scatterData = teamsTable.map((r) => ({ x: r.shotRate, y: r.xgPerEvent, z: r.events, team: r.team }));
+    out["side"] = data[side_col].astype(str) if side_col else out["pass_location_y"].apply(side_from_y)
+    out["delivery_zone"] = data[delivery_zone_col].astype(str) if delivery_zone_col else out["pass_end_location_y"].apply(delivery_zone_from_y)
+    out["end_zone"] = data[end_zone_col].astype(str) if end_zone_col else out.apply(lambda r: zone_from_end_location(r["pass_end_location_x"], r["pass_end_location_y"]), axis=1)
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 shadow-2xl lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <Button variant="ghost" className="mb-4 rounded-2xl border border-white/10 text-slate-200 hover:bg-white/5" onClick={onBack}>
-            <ChevronLeft className="mr-2 h-4 w-4" /> Back to landing
-          </Button>
-          <h1 className="text-4xl font-black text-white">{segment} Studio</h1>
-          <p className="mt-2 max-w-2xl text-slate-300">
-            A fresh workspace for {segment.toLowerCase()} analysis with filters, visuals, team rankings, taker profiles, and match context.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Select value={team} onValueChange={setTeam}>
-            <SelectTrigger className="rounded-2xl border-white/10 bg-white/5 text-white"><SelectValue placeholder="Team" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All teams</SelectItem>
-              {teams.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={side} onValueChange={setSide}>
-            <SelectTrigger className="rounded-2xl border-white/10 bg-white/5 text-white"><SelectValue placeholder="Side" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Both sides</SelectItem>
-              <SelectItem value="Left">Left</SelectItem>
-              <SelectItem value="Right">Right</SelectItem>
-              <SelectItem value="Unknown">Unknown</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={match} onValueChange={setMatch}>
-            <SelectTrigger className="rounded-2xl border-white/10 bg-white/5 text-white"><SelectValue placeholder="Match" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All matches</SelectItem>
-              {matches.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search team, taker, shooter..."
-            className="rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+    if phase_col:
+        out["phase"] = data[phase_col].astype(str)
+    else:
+        event_minute = out["Minute"] + out["Second"] / 60
+        out["phase"] = pd.cut(
+            event_minute,
+            bins=[-0.1, 15, 30, 45, 60, 75, 120],
+            labels=["0-15", "16-30", "31-45", "46-60", "61-75", "76+"],
+            right=True,
+        ).astype(str)
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <KpiCard title="Events" value={String(kpis.events)} foot="Filtered view" icon={<Activity className="h-5 w-5" />} />
-        <KpiCard title="Matches" value={String(kpis.matches)} foot="Unique matches" icon={<BarChart3 className="h-5 w-5" />} />
-        <KpiCard title="Shots" value={String(kpis.shots)} foot="From set pieces" icon={<Crosshair className="h-5 w-5" />} />
-        <KpiCard title="Goals" value={String(kpis.goals)} foot="Direct outcome" icon={<Goal className="h-5 w-5" />} />
-        <KpiCard title="Shot rate" value={`${(kpis.shotRate * 100).toFixed(1)}%`} foot={`${kpis.xg.toFixed(2)} total xG`} icon={<Users className="h-5 w-5" />} />
-      </div>
+    return out
 
-      <Tabs defaultValue="overview" className="space-y-5">
-        <TabsList className="grid h-auto grid-cols-3 rounded-2xl border border-white/10 bg-white/5 p-1 md:grid-cols-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="visuals">Visuals</TabsTrigger>
-          <TabsTrigger value="teams">Teams</TabsTrigger>
-          <TabsTrigger value="takers">Takers</TabsTrigger>
-          <TabsTrigger value="matches">Matches</TabsTrigger>
-          <TabsTrigger value="data">Data</TabsTrigger>
-        </TabsList>
+@st.cache_data
+def load_xlsx_bytes(file_bytes):
+    raw = pd.read_excel(io.BytesIO(file_bytes))
+    return parse_csv_like(raw)
 
-        <TabsContent value="overview" className="space-y-5">
-          <div className="grid gap-5 xl:grid-cols-2">
-            <SectionCard title="End-zone distribution" subtitle="Where the action finishes">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={endZones}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                    <XAxis dataKey="name" stroke="#94a3b8" />
-                    <YAxis stroke="#94a3b8" />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#60a5fa" radius={[10, 10, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </SectionCard>
+@st.cache_data
+def load_csv_bytes(file_bytes):
+    raw = pd.read_csv(io.BytesIO(file_bytes))
+    return parse_csv_like(raw)
 
-            <SectionCard title="Phase timing" subtitle="When the segment appears in matches">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={minuteTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                    <XAxis dataKey="bucket" stroke="#94a3b8" />
-                    <YAxis stroke="#94a3b8" />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="events" stroke="#34d399" strokeWidth={3} dot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </SectionCard>
-          </div>
+@st.cache_data
+def load_default_file_if_present():
+    possible_files = ["SWE SP.xlsx", "/mnt/data/SWE SP.xlsx"]
+    for f in possible_files:
+        if os.path.exists(f):
+            raw = pd.read_excel(f)
+            return parse_csv_like(raw)
+    return build_demo_data()
 
-          <SectionCard title="Team efficiency map" subtitle="Shot rate against xG per event">
-            <div className="h-96">
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                  <XAxis type="number" dataKey="x" name="Shot rate" stroke="#94a3b8" />
-                  <YAxis type="number" dataKey="y" name="xG per event" stroke="#94a3b8" />
-                  <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(value: number) => value.toFixed(3)} />
-                  <Scatter data={scatterData} fill="#c084fc" />
-                </ScatterChart>
-              </ResponsiveContainer>
+# =========================================================
+# SUMMARY BUILDERS
+# =========================================================
+def build_type_summary(df):
+    if df.empty:
+        return pd.DataFrame()
+    out = (
+        df.groupby("set_piece_type", dropna=False)
+        .agg(
+            events=("match_id", "size"),
+            matches=("match_id", pd.Series.nunique),
+            shots=("led_to_shot", "sum"),
+            goals=("goal", "sum"),
+            total_xg=("shot_xg", "sum"),
+        )
+        .reset_index()
+    )
+    out["events_per_match"] = out["events"] / out["matches"].replace(0, np.nan)
+    out["shot_rate"] = out["shots"] / out["events"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / out["events"].replace(0, np.nan)
+    return out.sort_values("events", ascending=False)
+
+def build_team_summary(df):
+    if df.empty:
+        return pd.DataFrame()
+    out = (
+        df.groupby("team", dropna=False)
+        .agg(
+            events=("match_id", "size"),
+            matches=("match_id", pd.Series.nunique),
+            shots=("led_to_shot", "sum"),
+            goals=("goal", "sum"),
+            total_xg=("shot_xg", "sum"),
+            takers=("Taker", pd.Series.nunique),
+            six_yard=("end_zone", lambda s: (s == "6-yard box").sum()),
+        )
+        .reset_index()
+    )
+    out["events_per_match"] = out["events"] / out["matches"].replace(0, np.nan)
+    out["shot_rate"] = out["shots"] / out["events"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / out["events"].replace(0, np.nan)
+    out["six_yard_rate"] = out["six_yard"] / out["events"].replace(0, np.nan)
+    return out.sort_values(["xg_per_event", "shot_rate"], ascending=False)
+
+def build_taker_summary(df):
+    if df.empty:
+        return pd.DataFrame()
+    out = (
+        df.groupby(["team", "Taker"], dropna=False)
+        .agg(
+            events=("match_id", "size"),
+            shots=("led_to_shot", "sum"),
+            goals=("goal", "sum"),
+            total_xg=("shot_xg", "sum"),
+        )
+        .reset_index()
+    )
+    out["shot_rate"] = out["shots"] / out["events"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / out["events"].replace(0, np.nan)
+    return out.sort_values(["events", "xg_per_event"], ascending=False)
+
+def build_match_summary(df):
+    if df.empty:
+        return pd.DataFrame()
+    out = (
+        df.groupby("Match", dropna=False)
+        .agg(
+            events=("match_id", "size"),
+            shots=("led_to_shot", "sum"),
+            goals=("goal", "sum"),
+            total_xg=("shot_xg", "sum"),
+        )
+        .reset_index()
+    )
+    out["shot_rate"] = out["shots"] / out["events"].replace(0, np.nan)
+    out["xg_per_event"] = out["total_xg"] / out["events"].replace(0, np.nan)
+    return out.sort_values(["total_xg", "events"], ascending=False)
+
+# =========================================================
+# VISUALS
+# =========================================================
+def draw_pitch(fig, title=None, height=650, half=False):
+    y_min = 60 if half else 0
+    fig.update_xaxes(range=[0, 80], visible=False)
+    fig.update_yaxes(range=[y_min, 120], visible=False, scaleanchor="x", scaleratio=1)
+    shapes = [
+        dict(type="rect", x0=0, y0=y_min, x1=80, y1=120, line=dict(color="white", width=2)),
+        dict(type="rect", x0=18, y0=102, x1=62, y1=120, line=dict(color="white", width=1.5)),
+        dict(type="rect", x0=30, y0=114, x1=50, y1=120, line=dict(color="white", width=1.5)),
+        dict(type="circle", x0=39.6, y0=107.6, x1=40.4, y1=108.4, fillcolor="white", line=dict(color="white")),
+        dict(type="line", x0=36, y0=120, x1=44, y1=120, line=dict(color="#00FF00", width=4)),
+    ]
+    if not half:
+        shapes.insert(1, dict(type="line", x0=0, y0=60, x1=80, y1=60, line=dict(color="white", width=1.5)))
+    fig.update_layout(
+        title=title,
+        height=height,
+        template="plotly_dark",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
+        shapes=shapes,
+    )
+    return fig
+
+def shotmap_figure(df_shots, title="Shotmap"):
+    fig = draw_pitch(go.Figure(), title=title, height=560, half=True)
+    plot_df = df_shots.dropna(subset=["shot_location_x", "shot_location_y"]).copy()
+    if plot_df.empty:
+        return fig
+
+    plot_df["shot_xg"] = pd.to_numeric(plot_df["shot_xg"], errors="coerce").fillna(0)
+    sizes = np.clip(plot_df["shot_xg"] * 160 + 12, 12, 55)
+
+    fig.add_trace(go.Scatter(
+        x=plot_df["shot_location_y"],
+        y=plot_df["shot_location_x"],
+        mode="markers",
+        marker=dict(size=sizes, opacity=0.78, line=dict(color="white", width=1.1)),
+        text=[
+            f"<b>Team:</b> {r.get('team','N/A')}<br><b>Taker:</b> {r.get('Taker','N/A')}<br><b>Shooter:</b> {r.get('Shooter','N/A')}<br><b>xG:</b> {r.get('shot_xg',0):.3f}"
+            for _, r in plot_df.iterrows()
+        ],
+        hovertemplate="%{text}<extra></extra>",
+        name="Shots",
+    ))
+    return fig
+
+def delivery_map_figure(df_events, title="Delivery Map"):
+    fig = draw_pitch(go.Figure(), title=title, height=650, half=False)
+    plot = df_events.dropna(subset=["pass_end_location_x", "pass_end_location_y"]).copy()
+    if plot.empty:
+        return fig
+
+    for zone, sub in plot.groupby("delivery_zone", dropna=False):
+        fig.add_trace(go.Scatter(
+            x=80 - sub["pass_end_location_y"],
+            y=sub["pass_end_location_x"],
+            mode="markers",
+            name=str(zone),
+            marker=dict(size=11, opacity=0.82, line=dict(width=1, color="white")),
+            text=[
+                f"<b>Team:</b> {r.get('team','N/A')}<br><b>Taker:</b> {r.get('Taker','N/A')}<br><b>Zone:</b> {r.get('delivery_zone','N/A')}"
+                for _, r in sub.iterrows()
+            ],
+            hovertemplate="%{text}<extra></extra>",
+        ))
+    return fig
+
+# =========================================================
+# APP STATE
+# =========================================================
+if "segment" not in st.session_state:
+    st.session_state["segment"] = None
+
+def go_home():
+    st.session_state["segment"] = None
+
+def choose_segment(segment):
+    st.session_state["segment"] = segment
+
+# =========================================================
+# DATA SOURCE
+# =========================================================
+def get_data():
+    uploaded = st.file_uploader("Upload CSV or Excel dataset", type=["csv", "xlsx"], label_visibility="collapsed")
+    if uploaded is not None:
+        try:
+            file_bytes = uploaded.getvalue()
+            if uploaded.name.lower().endswith(".csv"):
+                df = load_csv_bytes(file_bytes)
+            else:
+                df = load_xlsx_bytes(file_bytes)
+            return df, f"Loaded: {uploaded.name}"
+        except Exception as e:
+            st.error(f"Could not parse uploaded file: {e}")
+            return build_demo_data(), "Fallback: demo dataset"
+    else:
+        default_df = load_default_file_if_present()
+        label = "Loaded default SWE SP.xlsx" if len(default_df) > 6 else "Using demo dataset"
+        return default_df, label
+
+data_df, data_label = get_data()
+
+# =========================================================
+# LANDING PAGE
+# =========================================================
+def landing_page(df):
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-title">Allsvenskan <span>Set Piece</span> Studio</div>
+            <div class="hero-sub">
+                A totally new Streamlit app built around one simple landing page.
+                No login. No crowded navigation. Just three clear entry points:
+                <b>Free Kick</b>, <b>Corner</b>, and <b>Throw-In</b>.
             </div>
-          </SectionCard>
-        </TabsContent>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        <TabsContent value="visuals" className="space-y-5">
-          <div className="grid gap-5 xl:grid-cols-2">
-            <SectionCard title="Shot map" subtitle="Shot locations from the current filtered view">
-              <div className="space-y-3">
-                <div className="rounded-3xl border border-white/10 bg-slate-950 p-4">
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950">
-                    <div className="absolute inset-x-[10%] top-[70%] h-[18%] border border-white/50" />
-                    <div className="absolute inset-x-[25%] top-[82%] h-[6%] border border-white/50" />
-                    {filtered.filter((r) => r.shot_location_x && r.shot_location_y).map((r, i) => {
-                      const left = Math.min(95, Math.max(5, ((r.shot_location_y || 40) / 80) * 100));
-                      const top = Math.min(95, Math.max(5, 100 - ((r.shot_location_x || 100) / 120) * 100));
-                      const size = 10 + r.shot_xg * 60;
-                      return (
-                        <div
-                          key={i}
-                          className="absolute rounded-full border border-white/80 bg-sky-400/70"
-                          style={{ left: `${left}%`, top: `${top}%`, width: size, height: size, transform: "translate(-50%, -50%)" }}
-                          title={`${r.team} | ${r.Shooter || "Unknown"} | xG ${r.shot_xg.toFixed(3)}`}
-                        />
-                      );
-                    })}
-                  </div>
+    st.markdown(
+        f"""
+        <div class="upload-bar">
+            <div style="font-size:0.82rem;color:{MUTED};text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">Dataset status</div>
+            <div style="font-size:1rem;color:{TEXT};font-weight:700;margin-top:6px;">{data_label}</div>
+            <div style="font-size:0.88rem;color:{MUTED};margin-top:4px;">Upload a CSV or Excel file at the top to replace the current dataset.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    summary = build_type_summary(df)
+    if not summary.empty:
+        c1, c2, c3, c4 = st.columns(4)
+        for col, label in zip([c1, c2, c3], ["Free Kick", "Corner", "Throw-In"]):
+            with col:
+                row = summary[summary["set_piece_type"] == label]
+                if row.empty:
+                    metric_card(label, "0", "No events")
+                else:
+                    r = row.iloc[0]
+                    metric_card(label, f"{int(r['events']):,}", f"{human_pct(r['shot_rate'])} shot rate")
+        with c4:
+            metric_card("Matches", f"{df['match_id'].nunique():,}", "Across current dataset")
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    cards = [
+        ("Free Kick", SUCCESS, "Direct and indirect free-kick routines, shot quality, delivery zones, and match patterns."),
+        ("Corner", ACCENT, "Corner volume, end-zone targeting, taker impact, and shot creation from wide dead balls."),
+        ("Throw-In", ORANGE, "Attacking throw-ins, long-throw patterns, end zones, and team usage."),
+    ]
+    cols = st.columns(3)
+    for col, (label, color, desc) in zip(cols, cards):
+        with col:
+            st.markdown(
+                f"""
+                <div class="segment-card">
+                    <div class="segment-pill" style="background:{color}22;color:{TEXT};border-color:{color}55;">Segment</div>
+                    <div class="segment-title">{label}</div>
+                    <div class="segment-sub">{desc}</div>
                 </div>
-              </div>
-            </SectionCard>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button(f"Open {label}", key=f"open_{label}"):
+                choose_segment(label)
+                st.rerun()
 
-            <SectionCard title="Delivery map" subtitle="End locations of deliveries or actions">
-              <div className="rounded-3xl border border-white/10 bg-slate-950 p-4">
-                <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950">
-                  <div className="absolute inset-0 border border-white/50" />
-                  <div className="absolute inset-x-0 top-1/2 border-t border-white/30" />
-                  <div className="absolute inset-x-[10%] top-[70%] h-[18%] border border-white/50" />
-                  <div className="absolute inset-x-[25%] top-[82%] h-[6%] border border-white/50" />
-                  {filtered.filter((r) => r.pass_end_location_x && r.pass_end_location_y).map((r, i) => {
-                    const left = Math.min(95, Math.max(5, ((r.pass_end_location_y || 40) / 80) * 100));
-                    const top = Math.min(95, Math.max(5, 100 - ((r.pass_end_location_x || 100) / 120) * 100));
-                    return (
-                      <div
-                        key={i}
-                        className="absolute h-3.5 w-3.5 rounded-full border border-white/80 bg-emerald-400/80"
-                        style={{ left: `${left}%`, top: `${top}%`, transform: "translate(-50%, -50%)" }}
-                        title={`${r.team} | ${r.Taker || "Unknown"} | ${r.delivery_zone}`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </SectionCard>
-          </div>
-        </TabsContent>
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    section_header("League Snapshot", "Top-level comparison across the three segments")
+    if summary.empty:
+        empty_state()
+    else:
+        c5, c6 = st.columns(2)
+        with c5:
+            fig = px.bar(
+                summary,
+                x="set_piece_type",
+                y="events",
+                color="set_piece_type",
+                color_discrete_map=TYPE_COLORS,
+                title="Volume by Segment",
+                text="events",
+            )
+            st.plotly_chart(figure_layout(fig, 360, "Volume by Segment"), use_container_width=True)
+        with c6:
+            fig = px.bar(
+                summary,
+                x="set_piece_type",
+                y="xg_per_event",
+                color="set_piece_type",
+                color_discrete_map=TYPE_COLORS,
+                title="xG per Event",
+                text_auto=".3f",
+            )
+            st.plotly_chart(figure_layout(fig, 360, "xG per Event"), use_container_width=True)
 
-        <TabsContent value="teams">
-          <SectionCard title="Team rankings" subtitle="Best teams in the current segment view">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
-                  <tr>
-                    <th className="px-3 py-3">Team</th>
-                    <th className="px-3 py-3">Events</th>
-                    <th className="px-3 py-3">Shots</th>
-                    <th className="px-3 py-3">Shot rate</th>
-                    <th className="px-3 py-3">xG/event</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamsTable.map((row) => (
-                    <tr key={row.team} className="border-b border-white/5 text-white">
-                      <td className="px-3 py-3 font-semibold">{row.team}</td>
-                      <td className="px-3 py-3">{row.events}</td>
-                      <td className="px-3 py-3">{row.shots}</td>
-                      <td className="px-3 py-3">{(row.shotRate * 100).toFixed(1)}%</td>
-                      <td className="px-3 py-3">{row.xgPerEvent.toFixed(3)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+# =========================================================
+# SEGMENT PAGE
+# =========================================================
+def render_segment(df, segment_name):
+    seg_df = df[df["set_piece_type"] == segment_name].copy()
+
+    c1, c2 = st.columns([1, 6])
+    with c1:
+        if st.button("← Home"):
+            go_home()
+            st.rerun()
+    with c2:
+        st.markdown(
+            f"""
+            <div class="hero" style="padding:24px 26px 20px 26px;">
+                <div class="hero-title" style="font-size:2.25rem;">{segment_name} <span>Studio</span></div>
+                <div class="hero-sub">Focused analysis workspace for {segment_name.lower()} events only.</div>
             </div>
-          </SectionCard>
-        </TabsContent>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        <TabsContent value="takers">
-          <SectionCard title="Taker profiles" subtitle="Usage and output by taker">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
-                  <tr>
-                    <th className="px-3 py-3">Taker</th>
-                    <th className="px-3 py-3">Team</th>
-                    <th className="px-3 py-3">Events</th>
-                    <th className="px-3 py-3">Shot rate</th>
-                    <th className="px-3 py-3">xG/event</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {takerTable.map((row, i) => (
-                    <tr key={`${row.team}-${row.taker}-${i}`} className="border-b border-white/5 text-white">
-                      <td className="px-3 py-3 font-semibold">{row.taker}</td>
-                      <td className="px-3 py-3">{row.team}</td>
-                      <td className="px-3 py-3">{row.events}</td>
-                      <td className="px-3 py-3">{(row.shotRate * 100).toFixed(1)}%</td>
-                      <td className="px-3 py-3">{row.xgPerEvent.toFixed(3)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-        </TabsContent>
+    if seg_df.empty:
+        empty_state(f"No {segment_name.lower()} data found.")
+        return
 
-        <TabsContent value="matches">
-          <SectionCard title="Match board" subtitle="Where the segment mattered most">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
-                  <tr>
-                    <th className="px-3 py-3">Match</th>
-                    <th className="px-3 py-3">Events</th>
-                    <th className="px-3 py-3">Shots</th>
-                    <th className="px-3 py-3">Goals</th>
-                    <th className="px-3 py-3">xG</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matchTable.map((row) => (
-                    <tr key={row.match} className="border-b border-white/5 text-white">
-                      <td className="px-3 py-3 font-semibold">{row.match}</td>
-                      <td className="px-3 py-3">{row.events}</td>
-                      <td className="px-3 py-3">{row.shots}</td>
-                      <td className="px-3 py-3">{row.goals}</td>
-                      <td className="px-3 py-3">{row.xg.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-        </TabsContent>
+    all_teams = sorted(seg_df["team"].dropna().astype(str).unique().tolist())
+    all_matches = sorted(seg_df["Match"].dropna().astype(str).unique().tolist())
+    all_takers = sorted([str(x) for x in seg_df["Taker"].dropna().astype(str).unique() if str(x).strip()])
 
-        <TabsContent value="data" className="space-y-5">
-          <SectionCard title="Raw segment data" subtitle="Current filtered rows">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-white/10 text-slate-400">
-                  <tr>
-                    {[
-                      "Match",
-                      "team",
-                      "Minute",
-                      "Taker",
-                      "Shooter",
-                      "shot_xg",
-                      "side",
-                      "delivery_zone",
-                      "end_zone",
-                    ].map((h) => (
-                      <th key={h} className="px-3 py-3">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((r, i) => (
-                    <tr key={i} className="border-b border-white/5 text-white">
-                      <td className="px-3 py-3">{r.Match}</td>
-                      <td className="px-3 py-3">{r.team}</td>
-                      <td className="px-3 py-3">{r.Minute}</td>
-                      <td className="px-3 py-3">{r.Taker}</td>
-                      <td className="px-3 py-3">{r.Shooter}</td>
-                      <td className="px-3 py-3">{r.shot_xg.toFixed(3)}</td>
-                      <td className="px-3 py-3">{r.side}</td>
-                      <td className="px-3 py-3">{r.delivery_zone}</td>
-                      <td className="px-3 py-3">{r.end_zone}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    section_header("Filters", "Keep the segment view clean and focused")
+    f1, f2, f3, f4, f5 = st.columns(5)
+    with f1:
+        team_filter = st.selectbox("Team", ["All Teams"] + all_teams, key=f"team_{segment_name}")
+    with f2:
+        side_filter = st.selectbox("Side", ["Both", "Left", "Right", "Unknown"], key=f"side_{segment_name}")
+    with f3:
+        match_filter = st.multiselect("Matches", all_matches, key=f"match_{segment_name}")
+    with f4:
+        taker_filter = st.multiselect("Takers", all_takers, key=f"taker_{segment_name}")
+    with f5:
+        shots_only = st.checkbox("Shots only", key=f"shots_only_{segment_name}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-export default function AllsvenskanSetPieceStudioApp() {
-  const [segment, setSegment] = useState<SetPieceType | null>(null);
-  const [rows, setRows] = useState<EventRow[]>(demoData);
+    work = seg_df.copy()
+    if team_filter != "All Teams":
+        work = work[work["team"] == team_filter]
+    if side_filter != "Both":
+        work = work[work["side"] == side_filter]
+    if match_filter:
+        work = work[work["Match"].isin(match_filter)]
+    if taker_filter:
+        work = work[work["Taker"].astype(str).isin([str(x) for x in taker_filter])]
+    if shots_only:
+        work = work[work["led_to_shot"]]
 
-  const handleUpload = async (file: File | null) => {
-    if (!file) return;
-    const text = await file.text();
-    const parsed = parseCsv(text);
-    if (parsed.length) setRows(parsed);
-  };
+    if work.empty:
+        empty_state("No events match the current filters.")
+        return
 
-  return (
-    <div className="min-h-screen bg-[#07111f] text-white">
-      <div className="mx-auto max-w-7xl p-6 md:p-8">
-        <div className="mb-6 flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 shadow-xl md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Fresh app build</p>
-            <h1 className="mt-1 text-2xl font-black">Set Piece Analysis Platform</h1>
-          </div>
-          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 hover:bg-white/10">
-            <Upload className="h-4 w-4" />
-            Upload CSV dataset
-            <input type="file" accept=".csv" className="hidden" onChange={(e) => handleUpload(e.target.files?.[0] || null)} />
-          </label>
-        </div>
+    team_summary = build_team_summary(work)
+    taker_summary = build_taker_summary(work)
+    match_summary = build_match_summary(work)
 
-        {segment === null ? (
-          <Landing data={rows} onOpen={setSegment} />
-        ) : (
-          <SegmentStudio data={rows} segment={segment} onBack={() => setSegment(null)} />
-        )}
-      </div>
-    </div>
-  );
-}
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        metric_card("Events", f"{len(work):,}", segment_name)
+    with k2:
+        metric_card("Matches", f"{work['match_id'].nunique():,}", "Current filtered view")
+    with k3:
+        metric_card("Shots", f"{int(work['led_to_shot'].sum()):,}", "From set pieces")
+    with k4:
+        metric_card("Goals", f"{int(work['goal'].sum()):,}", "From set pieces")
+    with k5:
+        metric_card("Shot Rate", human_pct(work["led_to_shot"].mean()), f"{human_val(work['shot_xg'].sum(), 2)} total xG")
+
+    tabs = st.tabs(["Overview", "Visuals", "Teams", "Takers", "Matches", "Data"])
+
+    with tabs[0]:
+        c1, c2 = st.columns(2)
+        with c1:
+            zone_df = work.groupby("end_zone", dropna=False).size().reset_index(name="events")
+            fig = px.bar(
+                zone_df.sort_values("events", ascending=False),
+                x="end_zone",
+                y="events",
+                color="end_zone",
+                color_discrete_sequence=QUAL_PALETTE,
+                title="End-Zone Distribution",
+            )
+            st.plotly_chart(figure_layout(fig, 360, "End-Zone Distribution"), use_container_width=True)
+        with c2:
+            phase_df = work.groupby("phase", dropna=False).size().reset_index(name="events")
+            fig = px.line(
+                phase_df,
+                x="phase",
+                y="events",
+                markers=True,
+                title="Event Timing by Match Phase",
+                color_discrete_sequence=[TYPE_COLORS.get(segment_name, ACCENT)],
+            )
+            st.plotly_chart(figure_layout(fig, 360, "Event Timing by Match Phase"), use_container_width=True)
+
+        c3, c4 = st.columns(2)
+        with c3:
+            fig = px.histogram(
+                work,
+                x="Minute",
+                nbins=20,
+                title="Minute Distribution",
+                color_discrete_sequence=[TYPE_COLORS.get(segment_name, ACCENT)],
+            )
+            st.plotly_chart(figure_layout(fig, 360, "Minute Distribution"), use_container_width=True)
+        with c4:
+            scatter_df = team_summary.copy()
+            fig = px.scatter(
+                scatter_df,
+                x="shot_rate",
+                y="xg_per_event",
+                size="events",
+                text="team",
+                title="Team Efficiency Map",
+                color_discrete_sequence=[TYPE_COLORS.get(segment_name, ACCENT)],
+            )
+            fig.update_traces(textposition="top center")
+            fig.update_xaxes(tickformat=".0%")
+            st.plotly_chart(figure_layout(fig, 360, "Team Efficiency Map"), use_container_width=True)
+
+    with tabs[1]:
+        c1, c2 = st.columns(2)
+        with c1:
+            shot_df = work.dropna(subset=["shot_location_x", "shot_location_y"])
+            if shot_df.empty:
+                empty_state("No shot locations in this view.")
+            else:
+                st.plotly_chart(shotmap_figure(shot_df, f"{segment_name} Shotmap"), use_container_width=True)
+        with c2:
+            del_df = work.dropna(subset=["pass_end_location_x", "pass_end_location_y"])
+            if del_df.empty:
+                empty_state("No delivery coordinates in this view.")
+            else:
+                st.plotly_chart(delivery_map_figure(del_df, f"{segment_name} Delivery Map"), use_container_width=True)
+
+    with tabs[2]:
+        if team_summary.empty:
+            empty_state("No team summary available.")
+        else:
+            st.dataframe(team_summary.reset_index(drop=True), use_container_width=True, height=420)
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = px.bar(
+                    team_summary.head(12),
+                    x="team",
+                    y="events_per_match",
+                    color="xg_per_event",
+                    color_continuous_scale="Blues",
+                    title="Events per Match",
+                    hover_data=["shot_rate", "events", "matches"],
+                )
+                fig.update_layout(coloraxis_showscale=False)
+                st.plotly_chart(figure_layout(fig, 360, "Events per Match"), use_container_width=True)
+            with c2:
+                fig = px.bar(
+                    team_summary.head(12),
+                    x="team",
+                    y="shot_rate",
+                    color="six_yard_rate",
+                    color_continuous_scale="Blues",
+                    title="Shot Rate by Team",
+                    hover_data=["events", "total_xg"],
+                )
+                fig.update_layout(coloraxis_showscale=False)
+                fig.update_yaxes(tickformat=".0%")
+                st.plotly_chart(figure_layout(fig, 360, "Shot Rate by Team"), use_container_width=True)
+
+    with tabs[3]:
+        if taker_summary.empty:
+            empty_state("No taker summary available.")
+        else:
+            st.dataframe(taker_summary.reset_index(drop=True), use_container_width=True, height=420)
+            plot = taker_summary[taker_summary["events"] >= 1].head(12).copy()
+            if not plot.empty:
+                plot["label"] = plot["Taker"].astype(str) + " (" + plot["team"].astype(str) + ")"
+                c1, c2 = st.columns(2)
+                with c1:
+                    fig = px.bar(
+                        plot.sort_values("xg_per_event", ascending=False),
+                        x="label",
+                        y="xg_per_event",
+                        color="xg_per_event",
+                        color_continuous_scale="Blues",
+                        title="Top Takers by xG/Event",
+                    )
+                    fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-35)
+                    st.plotly_chart(figure_layout(fig, 360, "Top Takers by xG/Event"), use_container_width=True)
+                with c2:
+                    fig = px.bar(
+                        plot.sort_values("shot_rate", ascending=False),
+                        x="label",
+                        y="shot_rate",
+                        color="shot_rate",
+                        color_continuous_scale="Blues",
+                        title="Top Takers by Shot Rate",
+                    )
+                    fig.update_layout(coloraxis_showscale=False, xaxis_tickangle=-35)
+                    fig.update_yaxes(tickformat=".0%")
+                    st.plotly_chart(figure_layout(fig, 360, "Top Takers by Shot Rate"), use_container_width=True)
+
+    with tabs[4]:
+        if match_summary.empty:
+            empty_state("No match summary available.")
+        else:
+            st.dataframe(match_summary.reset_index(drop=True), use_container_width=True, height=460)
+
+    with tabs[5]:
+        st.dataframe(work.reset_index(drop=True), use_container_width=True, height=520)
+        csv_bytes = work.to_csv(index=False).encode()
+        st.download_button(
+            f"Download {segment_name} CSV",
+            csv_bytes,
+            f"{segment_name.lower().replace('-', '_').replace(' ', '_')}_events.csv",
+            "text/csv",
+            use_container_width=True,
+        )
+
+# =========================================================
+# ROUTER
+# =========================================================
+if st.session_state["segment"] is None:
+    landing_page(data_df)
+else:
+    render_segment(data_df, st.session_state["segment"])
+
+st.markdown(
+    '<div class="footer-note">⚽ Allsvenskan Set Piece Studio · Brand new Streamlit build · Free Kick + Corner + Throw-In</div>',
+    unsafe_allow_html=True,
+)
