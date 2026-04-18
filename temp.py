@@ -206,7 +206,7 @@ def pitch_layout(fig, h=580, half=True, title=None):
     return fig
 
 # ── Data loading ──────────────────────────────────────────────────────────────
-DATA_DIR = "/mnt/user-data/uploads"
+DATA_DIR = ""
 
 @st.cache_data
 def load_all():
