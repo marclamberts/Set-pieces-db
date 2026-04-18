@@ -210,9 +210,9 @@ DATA_DIR = ""
 
 @st.cache_data
 def load_all():
-    swe  = pd.read_excel(os.path.join(DATA_DIR, "SWE_SP.xlsx"))
-    cors = pd.read_excel(os.path.join(DATA_DIR, "Allsvenskan_-_Corners_2025.xlsx"))
-    dlay = pd.read_excel(os.path.join(DATA_DIR, "corner_delays__1_.xlsx"))
+    swe  = pd.read_excel(os.path.join(DATA_DIR, "SWE SP.xlsx"))
+    cors = pd.read_excel(os.path.join(DATA_DIR, "Allsvenskan - Corners 2025.xlsx"))
+    dlay = pd.read_excel(os.path.join(DATA_DIR, "corner_delays.xlsx"))
     duel = pd.read_excel(os.path.join(DATA_DIR, "duel_hops_rating_summary.xlsx"))
     return swe, cors, dlay, duel
 
